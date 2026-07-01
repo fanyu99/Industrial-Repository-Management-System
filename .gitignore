@@ -1,0 +1,184 @@
+# ============================================
+# C++ Build Artifacts
+# ============================================
+*.o
+*.obj
+*.exe
+*.out
+*.app
+*.so
+*.so.*
+*.dylib
+*.dll
+*.a
+*.lib
+*.lo
+*.la
+*.exp
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# ============================================
+# CMake
+# ============================================
+build/
+cmake-build-*/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+CMakeUserPresets.json
+compile_commands.json
+*.cmake
+!CMakeLists.txt
+
+# ============================================
+# Qt
+# ============================================
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+*.moc
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qm
+Makefile
+*.stash
+.qmake.stash
+.qmake.cache
+.qmake.conf
+
+# Qt Creator
+*.autosave
+*.creator.user
+*.files
+*.includes
+*.config
+
+# Qt deploy
+.qt/
+
+# ============================================
+# IDE / Editor
+# ============================================
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+.code-workspace
+*.kate-swp
+
+# CLion
+/.idea/
+
+# ============================================
+# OS Generated Files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Linux
+.directory
+*~
+
+# ============================================
+# MySQL / Database
+# ============================================
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+*.mdb
+*.accdb
+
+# MySQL connection config (sensitive)
+mysql_config.h
+db_config.h
+database.config
+*.my.cnf
+
+# ============================================
+# Environment / Config (Sensitive)
+# ============================================
+.env
+.env.*
+.env.local
+.env.production
+*.env
+config.ini
+settings.ini
+secrets.h
+credentials.*
+appsettings.*.json
+
+# ============================================
+# Dependencies / Packages
+# ============================================
+*.deb
+*.rpm
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+vcpkg_installed/
+third_party/
+vendor/
+
+# Conan
+conanbuildinfo.*
+conaninfo.*
+
+# vcpkg
+vcpkg/
+installed/
+
+# ============================================
+# Debug / Log
+# ============================================
+*.log
+*.tmp
+*.temp
+core
+core.*
+dumps/
+*.stackdump
+
+# GDB
+.gdb_history
+.gdbinit
+
+# Valgrind
+callgrind.out.*
+cachegrind.out.*
+massif.out.*
+
+# ============================================
+# Misc
+# ============================================
+*.bak
+*.orig
+*.pid
+*.seed
+*.pid.lock
