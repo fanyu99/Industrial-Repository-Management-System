@@ -104,9 +104,8 @@ Desktop.ini
 *~
 
 # ============================================
-# MySQL / Database
+# Database / Data files (不忽略 sql/*.sql 源码)
 # ============================================
-*.sql
 *.sqlite
 *.sqlite3
 *.db
