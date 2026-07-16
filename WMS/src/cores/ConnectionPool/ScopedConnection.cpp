@@ -4,7 +4,7 @@
 ScopedConnection::ScopedConnection(ConnectionPool& pool)
     : pool_(&pool)
 {
-    meta_ = pool_->GetConnection();   // 返回 std::optional<ConnectionMeta>
+    meta_ = pool_->GetConnection();   // 返回连接元数据
 }
 
 // ── 移动构造：转移所有权 ──

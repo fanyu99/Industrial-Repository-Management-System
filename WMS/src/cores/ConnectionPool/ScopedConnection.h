@@ -33,5 +33,5 @@ public:
 
 private:
     ConnectionPool* pool_;                       // 所属连接池
-    std::optional<ConnectionMeta> meta_;          // 持有的连接完整元数据
+    std::optional<ConnectionMeta> meta_;          // 持有的连接元数据
 };

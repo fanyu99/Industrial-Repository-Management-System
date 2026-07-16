@@ -15,6 +15,7 @@
 *.lo
 *.la
 *.exp
+tests/
 
 # Compiled Object files
 *.slo
