@@ -1,14 +1,3 @@
-#pragma once
-
-#include <QList>
-#include <QMetaType>
-#include <QString>
-#include <QStringList>
-#include <QUuid>
-#include <QVariant>
-#include <QVariantList>
-#include <QVariantMap>
-
 // 数据库类型头文件:
 /*
 1.StatementType 语句类型
@@ -22,17 +11,30 @@
 9.StatementResult 语句结果
 10.DatabaseResult 数据库结果
 */
+#pragma once
+
+#include <QtCore/QList>
+#include <QMetaType>
+#include <QString>
+#include <QStringList>
+#include <QUuid>
+#include <QVariant>
+#include <QVariantList>
+#include <QVariantMap>
+
 
 
 // 1.语句类型
-enum class StatementType { Query,
-    Command };
+enum class StatementType {
+    Query, // 查询(SELECT等),业务层面需要注意处理rows,columns
+    Command // 命令(INSERT,UPDATE,DELETE等),业务层面需要注意影响的行数:AffectedRows和最后插入的ID:LastInsertId
+};
 // 2.数据库任务类型
 enum class DatabaseTaskType { Single,
     Transaction };
 // 3.数据库错误码       
 enum class DatabaseErrorCode {
-    None,
+    None, // 无错误
     InvalidTask, // 无效任务
     QueueFull, // 队列满
     ShuttingDown, // 关闭中
@@ -44,7 +46,8 @@ enum class DatabaseErrorCode {
     Cancelled // 已取消
 };
 // 4.数据库执行器状态
-enum class DatabaseExecutorState { Starting,
+enum class DatabaseExecutorState {
+    Starting, // 启动中
     Ready, // 就绪
     ShuttingDown, // 关闭中
     Stopped, // 已停止
@@ -79,7 +82,7 @@ struct DatabaseConfig {
             && shutdownDrainTimeoutMs >= 0;
     }
 };
-// 6.数据库语句
+// 6.数据库SQL语句
 struct DatabaseStatement {
     StatementType type { StatementType::Query }; // 语句类型
     QString sql; // SQL 语句
@@ -122,7 +125,7 @@ struct DatabaseTask {
 };
 // 8.数据库错误
 struct DatabaseError {
-    DatabaseErrorCode code { DatabaseErrorCode::None }; // 错误码
+    DatabaseErrorCode code { DatabaseErrorCode::None }; // DatabaseErrorCode错误码
     QString message; // 错误消息
     QString nativeErrorCode; // 本地错误码
     QString databaseText; // 数据库错误文本
@@ -141,10 +144,11 @@ struct DatabaseResult {
     bool success { false }; // 是否成功
     QList<StatementResult> statementResults; // 语句结果
     int failedStatementIndex { -1 }; // 失败语句索引
-    DatabaseError error;
+    DatabaseError error; // 错误信息
 };
 
 // 注册元类型,用于信号槽传递等
+// 只要自定义的类型会经过跨线程的信号槽,就要注册元类型
 Q_DECLARE_METATYPE(StatementType)
 Q_DECLARE_METATYPE(DatabaseTaskType)
 Q_DECLARE_METATYPE(DatabaseErrorCode)

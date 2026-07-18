@@ -1,12 +1,5 @@
+// 数据库工作线程 DatabaseWorker
 #include "DatabaseWorker.h"
-
-// 数据库工作线程:负责执行数据库任务
-/*
-1.数据库初始化:根据配置初始化数据库连接
-2.数据库任务执行:根据任务类型执行数据库操作
-3.数据库关闭:关闭数据库连接
-*/
-
 
 // 数据库工作线日志分类
 Q_LOGGING_CATEGORY(databaseWorkerLog, "wms.database.worker")
@@ -43,7 +36,7 @@ void DatabaseWorker::initialize(const DatabaseConfig& config)
         DatabaseError error;
         error.code = DatabaseErrorCode::ConnectionFailed;
         error.message = QStringLiteral("数据库配置无效，第一版仅支持 QODBC");
-        emit initializationFailed(error);// 释放信号,输出错误信息
+        emit initializationFailed(error); // 释放信号,输出错误信息
         return;
     }
 
@@ -72,21 +65,22 @@ void DatabaseWorker::initialize(const DatabaseConfig& config)
     healthTimer_->setInterval(config_.healthCheckIntervalMs);
     connect(healthTimer_, &QTimer::timeout, this, &DatabaseWorker::checkHealth); // 连接信号,槽函数
     healthTimer_->start();
-    initialized_ = true; 
+    initialized_ = true;
     emit initialized(); // 初始化完成
 }
 // 执行数据库任务
 void DatabaseWorker::executeTask(const DatabaseTask& task)
 {
-    // 如果正在关闭/任务无效
+    // 如果正在关闭/任务无效 , 发送信号
     if (shuttingDown_ || !task.isValid()) {
         DatabaseResult result;
+        result.success = false;
         result.requestId = task.requestId;
         result.error.code = shuttingDown_ ? DatabaseErrorCode::ShuttingDown
                                           : DatabaseErrorCode::InvalidTask;
         result.error.message = shuttingDown_ ? QStringLiteral("数据库工作线程正在关闭")
                                              : QStringLiteral("数据库任务无效");
-        emit taskCompleted(result); // 释放完成信号/任务无效信号
+        emit taskCompleted(result); // 释放信号
         return;
     }
     // 正在执行任务
@@ -94,15 +88,17 @@ void DatabaseWorker::executeTask(const DatabaseTask& task)
     DatabaseError connectionError;
     DatabaseResult result;
     // 如果还未初始化/数据库连接无效
-    if (!initialized_ || !ensureConnectionOpen(connectionError)) {
+    if (!this->initialized_ || !ensureConnectionOpen(connectionError)) {
+        result.success = false;
         result.requestId = task.requestId;
         result.error = connectionError;
-        // 如果连接无效时并未设置其他错误
-        if (result.error.code == DatabaseErrorCode::None) { 
+        // 如果没有错误,则为连接错误(工作线程未初始化)
+        if (result.error.code == DatabaseErrorCode::None) {
             result.error.code = DatabaseErrorCode::ConnectionFailed;
             result.error.message = QStringLiteral("数据库工作线程尚未初始化");
         }
     }
+    // 如果状态正常:
     // 如果是事务
     else if (task.type == DatabaseTaskType::Transaction) {
         result = executeTransaction(task);
@@ -122,7 +118,7 @@ void DatabaseWorker::shutdown()
     if (shuttingDown_) {
         return;
     }
-    shuttingDown_ = true; 
+    shuttingDown_ = true;
     closeConnection(); // 关闭连接
     emit shutdownCompleted(); // 释放信号
 }
@@ -147,7 +143,7 @@ void DatabaseWorker::checkHealth()
         database_.close(); // 关闭连接
     }
 }
-// 数据库连接,成功返回true,失败false,并设置错误信息(如果有效,则为None)
+// 数据库连接,成功返回true,失败false,通过引用设置错误信息(如果有效,则为None)
 bool DatabaseWorker::ensureConnectionOpen(DatabaseError& error)
 {
     // 连接无效
@@ -160,70 +156,23 @@ bool DatabaseWorker::ensureConnectionOpen(DatabaseError& error)
         return true;
     }
     error = sqlError(DatabaseErrorCode::ConnectionFailed,
-                     QStringLiteral("连接数据库失败"), database_.lastError());
+        QStringLiteral("连接数据库失败"), database_.lastError());
     return false;
 }
-// 执行单语句
-DatabaseResult DatabaseWorker::executeSingle(const DatabaseTask& task)
-{
-    DatabaseResult result;
-    result.requestId = task.requestId;
-    StatementResult statementResult;
-    if (!executeStatement(task.statements.constFirst(), statementResult, result.error)) {
-        result.failedStatementIndex = 0;
-        return result;
-    }
-    result.statementResults.append(statementResult);
-    result.success = true;
-    return result;
-}
 
-DatabaseResult DatabaseWorker::executeTransaction(const DatabaseTask& task)
-{
-    DatabaseResult result;
-    result.requestId = task.requestId;
-    if (!database_.transaction()) {
-        result.error = sqlError(DatabaseErrorCode::TransactionFailed,
-                                QStringLiteral("启动数据库事务失败"), database_.lastError());
-        return result;
-    }
-
-    for (qsizetype index = 0; index < task.statements.size(); ++index) {
-        StatementResult statementResult;
-        DatabaseError statementError;
-        if (!executeStatement(task.statements.at(index), statementResult, statementError)) {
-            database_.rollback();
-            result.statementResults.clear();
-            result.failedStatementIndex = static_cast<int>(index);
-            result.error = statementError;
-            return result;
-        }
-        result.statementResults.append(statementResult);
-    }
-
-    if (!database_.commit()) {
-        const QSqlError commitError = database_.lastError();
-        database_.rollback();
-        result.statementResults.clear();
-        result.error = sqlError(DatabaseErrorCode::TransactionFailed,
-                                QStringLiteral("提交数据库事务失败"), commitError);
-        return result;
-    }
-    result.success = true;
-    return result;
-}
-// 执行语句
+// 执行语句,引用返回结果和错误信息
 bool DatabaseWorker::executeStatement(const DatabaseStatement& statement,
-                                      StatementResult& result,
-                                      DatabaseError& error)
+    StatementResult& result,
+    DatabaseError& error)
 {
     QSqlQuery query(database_);
     // 如果query预处理失败
     if (!query.prepare(statement.sql)) {
         error = sqlError(DatabaseErrorCode::PrepareFailed,
-                         QStringLiteral("预处理 SQL 失败"), query.lastError());
+            QStringLiteral("预处理 SQL 失败"), query.lastError());
         return false;
     }
+    // 绑定参数
     for (auto iterator = statement.parameters.cbegin();
          iterator != statement.parameters.cend(); ++iterator) {
         QString placeholder = iterator.key();
@@ -232,19 +181,20 @@ bool DatabaseWorker::executeStatement(const DatabaseStatement& statement,
         }
         query.bindValue(placeholder, iterator.value()); // 绑定参数
     }
+    // 执行查询失败
     if (!query.exec()) {
         error = sqlError(DatabaseErrorCode::ExecuteFailed,
-                         QStringLiteral("执行 SQL 失败"), query.lastError());
+            QStringLiteral("执行 SQL 失败"), query.lastError());
         return false;
     }
-
+    // 处理命令结果
     result.affectedRows = query.numRowsAffected();
     result.lastInsertId = query.lastInsertId();
     if (statement.type != StatementType::Query) {
         return true;
     }
 
-    // 添加处理结果
+    // 处理查询结果集rows,columns
     const QSqlRecord record = query.record();
     for (int column = 0; column < record.count(); ++column) {
         result.columns.append(record.fieldName(column));
@@ -268,8 +218,64 @@ bool DatabaseWorker::executeStatement(const DatabaseStatement& statement,
     }
     return true;
 }
-// 数据库的sql错误码转换为数据库错误
-DatabaseError DatabaseWorker::sqlError(DatabaseErrorCode code, const QString& message,const QSqlError& error) const
+
+// 执行单语句.返回数据库结果
+DatabaseResult DatabaseWorker::executeSingle(const DatabaseTask& task)
+{
+    DatabaseResult result;
+    result.requestId = task.requestId;
+    StatementResult statementResult;
+    if (!executeStatement(task.statements.constFirst(), statementResult, result.error)) {
+        result.failedStatementIndex = 0;
+        return result;
+    }
+    // 执行成功
+    result.statementResults.append(statementResult);
+    result.success = true;
+    return result;
+}
+
+// 执行事务.返回数据库结果
+DatabaseResult DatabaseWorker::executeTransaction(const DatabaseTask& task)
+{
+    DatabaseResult result;
+    result.requestId = task.requestId;
+    // 事务启动失败
+    if (!database_.transaction()) {
+        result.error = sqlError(DatabaseErrorCode::TransactionFailed,
+            QStringLiteral("启动数据库事务失败"), database_.lastError());
+        return result;
+    }
+    // 执行事务语句
+    for (qsizetype i = 0; i < task.statements.size(); ++i) {
+        StatementResult statementResult;
+        DatabaseError statementError;
+        // 执行语句失败,回滚事务并返回结果
+        if (!executeStatement(task.statements.at(i), statementResult, statementError)) {
+            database_.rollback();
+            result.statementResults.clear();
+            result.failedStatementIndex = static_cast<int>(i); // 设置失败语句的序号
+            result.error = statementError;
+            return result;
+        }
+        result.statementResults.append(statementResult); // 执行成功后添加到结果
+    }
+    // 提交事务失败,事务回滚
+    if (!database_.commit()) {
+        const QSqlError commitError = database_.lastError();
+        database_.rollback();
+        result.statementResults.clear();
+        result.error = sqlError(DatabaseErrorCode::TransactionFailed,
+            QStringLiteral("提交数据库事务失败"), commitError);
+        return result;
+    }
+    // 事务成功
+    result.success = true;
+    return result;
+}
+
+// 数据库的QSqlError错误转换为数据库错误DatabaseError
+DatabaseError DatabaseWorker::sqlError(DatabaseErrorCode code, const QString& message, const QSqlError& error) const
 {
     DatabaseError result;
     result.code = code;

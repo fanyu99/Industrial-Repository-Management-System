@@ -16,6 +16,7 @@
 *.la
 *.exp
 tests/
+WmsTests/
 
 # Compiled Object files
 *.slo
@@ -161,6 +162,7 @@ installed/
 *.tmp
 *.temp
 core
+!core/
 core.*
 dumps/
 *.stackdump

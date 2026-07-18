@@ -1,3 +1,4 @@
+// 数据库执行器 DatabaseExecutor
 #include "DatabaseExecutor.h"
 
 #include "DatabaseWorker.h"
@@ -7,9 +8,10 @@
 #include <QThread>
 #include <QTimer>
 #include <utility>
-
+// 数据库执行器日志分类
 Q_LOGGING_CATEGORY(databaseExecutorLog, "wms.database.executor")
 
+// 注册数据库元类型
 namespace {
 void registerDatabaseMetaTypes()
 {
@@ -25,44 +27,48 @@ void registerDatabaseMetaTypes()
     qRegisterMetaType<DatabaseResult>();
 }
 }
-
+// 构造
 DatabaseExecutor::DatabaseExecutor(const DatabaseConfig& config, QObject* parent)
     : QObject(parent)
-    , config_(config)
-    , worker_(new DatabaseWorker)
-    , drainTimer_(new QTimer(this))
+    , config_ { config }
+    , worker_ { new DatabaseWorker() }
+    , drainTimer_ { new QTimer(this) }
 {
     registerDatabaseMetaTypes(); // 注册元类型
 
     drainTimer_->setSingleShot(true); // 单次触发
+
     // 连接信号,槽函数
     connect(drainTimer_, &QTimer::timeout,
-            this, &DatabaseExecutor::onDrainTimeout); // 连接超时信号和超时槽函数
+        this, &DatabaseExecutor::onDrainTimeout); // 连接超时信号和超时槽函数
     // 转移到工作线程
-    worker_->moveToThread(&workerThread_);
+    worker_->moveToThread(&workerThread_); // 将Worker转移到工作线程
     connect(&workerThread_, &QThread::finished,
-            this, &DatabaseExecutor::onWorkerThreadFinished,
-            Qt::QueuedConnection);
+        this, &DatabaseExecutor::onWorkerThreadFinished,
+        Qt::QueuedConnection); // 工作线程任务结束,异步调用槽函数
     connect(worker_, &DatabaseWorker::initialized,
-            this, &DatabaseExecutor::onWorkerInitialized);
+        this, &DatabaseExecutor::onWorkerInitialized);
     connect(worker_, &DatabaseWorker::initializationFailed,
-            this, &DatabaseExecutor::onWorkerInitializationFailed);
+        this, &DatabaseExecutor::onWorkerInitializationFailed);
     connect(worker_, &DatabaseWorker::taskCompleted,
-            this, &DatabaseExecutor::onTaskCompleted);
+        this, &DatabaseExecutor::onTaskCompleted);
     connect(worker_, &DatabaseWorker::shutdownCompleted,
-            this, &DatabaseExecutor::onWorkerShutdownCompleted);
+        this, &DatabaseExecutor::onWorkerShutdownCompleted);
     connect(worker_, &DatabaseWorker::shutdownCompleted,
-            worker_, &QObject::deleteLater, Qt::DirectConnection);
+        worker_, &QObject::deleteLater, Qt::DirectConnection); // 关闭完成直接删除
     connect(worker_, &QObject::destroyed,
-            &workerThread_, &QThread::quit, Qt::DirectConnection);
+        &workerThread_, &QThread::quit, Qt::DirectConnection); // 删除后立即停止工作线程
 
     workerThread_.setObjectName(QStringLiteral("WmsDatabaseWorkerThread"));
     workerThread_.start();
     // 启动工作线程函数
     const DatabaseConfig workerConfig = config_;
-    QMetaObject::invokeMethod(worker_, [worker = worker_, workerConfig] {
-        worker->initialize(workerConfig);
-    }, Qt::QueuedConnection);
+    // 异步初始化工作线程
+    QMetaObject::invokeMethod(
+        worker_, [worker = worker_, workerConfig] {
+            worker->initialize(workerConfig);
+        },
+        Qt::QueuedConnection);
 }
 // 析构
 DatabaseExecutor::~DatabaseExecutor()
@@ -71,11 +77,13 @@ DatabaseExecutor::~DatabaseExecutor()
     workerShutdownRequested_ = true;
     // 请求工作线程关闭
     if (worker != nullptr && workerThread_.isRunning()) {
-        QMetaObject::invokeMethod(worker, [worker] {
-            worker->shutdown();
-        }, Qt::BlockingQueuedConnection);
+        QMetaObject::invokeMethod(
+            worker, [worker] {
+                worker->shutdown();
+            },
+            Qt::BlockingQueuedConnection); // 阻塞当前的线程等待shutdown函数完成
     }
-    // 如果工作线程未关闭,则强制关闭
+    // 如果工作线程未关闭,则等待线程结束
     if (workerThread_.isRunning()) {
         workerThread_.quit();
         workerThread_.wait();
@@ -88,13 +96,15 @@ QUuid DatabaseExecutor::submitTask(DatabaseTask task)
         task.requestId = QUuid::createUuid();
     }
     const QUuid requestId = task.requestId;
-    // 如果当前线程是执行器线程,则直接提交任务
+    // 如果当前提交任务的线程是执行器的线程,则直接提交任务,避免事件队列开销
     if (QThread::currentThread() == thread()) {
         submitTaskInOwnerThread(task);
     } else { // 否则异步提交任务
-        QMetaObject::invokeMethod(this, [this, task = std::move(task)] {
-            submitTaskInOwnerThread(task);
-        }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(
+            this, [this, task = std::move(task)] {
+                submitTaskInOwnerThread(task);
+            },
+            Qt::QueuedConnection);
     }
     return requestId;
 }
@@ -118,7 +128,7 @@ void DatabaseExecutor::shutdown()
     // 如果执行失败,取消任务后关闭
     if (state_ == DatabaseExecutorState::Failed) {
         cancelPending(DatabaseErrorCode::Cancelled,
-                      QStringLiteral("数据库执行器启动失败，任务已取消"));
+            QStringLiteral("数据库执行器启动失败，任务已取消"));
         requestWorkerShutdown();
         return;
     }
@@ -155,7 +165,7 @@ void DatabaseExecutor::onWorkerInitializationFailed(const DatabaseError& error)
     setState(DatabaseExecutorState::Failed);
     emit startupFailed(error);
     cancelPending(DatabaseErrorCode::ConnectionFailed,
-                  QStringLiteral("数据库工作线程初始化失败"));
+        QStringLiteral("数据库工作线程初始化失败"));
     requestWorkerShutdown();
 }
 // 数据库工作线程任务完成
@@ -163,16 +173,17 @@ void DatabaseExecutor::onTaskCompleted(const DatabaseResult& result)
 {
     taskInFlight_ = false;
     emit taskFinished(result);
-
+    // 如果执行器状态正常,继续分发
     if (state_ == DatabaseExecutorState::Ready) {
         dispatchNext();
         return;
     }
+    // 如果正在关闭
     if (state_ == DatabaseExecutorState::ShuttingDown) {
-        if (pendingTasks_.isEmpty()) {
+        if (pendingTasks_.isEmpty()) { // 空了就关闭
             requestWorkerShutdown();
         } else {
-            dispatchNext();
+            dispatchNext(); // 没空就下一个任务
         }
     }
 }
@@ -182,11 +193,12 @@ void DatabaseExecutor::onDrainTimeout()
     if (state_ != DatabaseExecutorState::ShuttingDown) {
         return;
     }
+    // 取消派发剩下的任务
     qCWarning(databaseExecutorLog) << "关闭排空超时，取消"
                                    << pendingTasks_.size() << "个未派发任务";
     cancelPending(DatabaseErrorCode::Cancelled,
-                  QStringLiteral("数据库执行器关闭排空超时，任务未派发"));
-    if (!taskInFlight_) {
+        QStringLiteral("数据库执行器关闭排空超时，任务未派发"));
+    if (!taskInFlight_) { // 如果没有执行任务了.关闭
         requestWorkerShutdown();
     }
 }
@@ -206,24 +218,24 @@ void DatabaseExecutor::onWorkerThreadFinished()
         emit shutdownFinished();
     }
 }
-// 在执行器线程进入任务队列
+// 提交任务到执行器线程进入任务队列
 void DatabaseExecutor::submitTaskInOwnerThread(const DatabaseTask& task)
 {
     if (!task.isValid()) {
-        emit taskFinished(rejectedResult(task.requestId, DatabaseErrorCode::InvalidTask,
-                                         QStringLiteral("数据库任务无效")));
+        emit taskFinished(RejectedResult(task.requestId, DatabaseErrorCode::InvalidTask,
+            QStringLiteral("数据库任务无效")));
         return;
     }
     if (state_ == DatabaseExecutorState::ShuttingDown
         || state_ == DatabaseExecutorState::Stopped
         || state_ == DatabaseExecutorState::Failed) {
-        emit taskFinished(rejectedResult(task.requestId, DatabaseErrorCode::ShuttingDown,
-                                         QStringLiteral("数据库执行器不再接收新任务")));
+        emit taskFinished(RejectedResult(task.requestId, DatabaseErrorCode::ShuttingDown,
+            QStringLiteral("数据库执行器不再接收新任务")));
         return;
     }
     if (pendingTasks_.size() >= config_.queueCapacity) {
-        emit taskFinished(rejectedResult(task.requestId, DatabaseErrorCode::QueueFull,
-                                         QStringLiteral("数据库任务队列已满")));
+        emit taskFinished(RejectedResult(task.requestId, DatabaseErrorCode::QueueFull,
+            QStringLiteral("数据库任务队列已满")));
         return;
     }
 
@@ -255,11 +267,11 @@ void DatabaseExecutor::dispatchNext()
     }
     // 任务失败
     taskInFlight_ = false;
-    emit taskFinished(rejectedResult(task.requestId, DatabaseErrorCode::ConnectionFailed,
-                                     QStringLiteral("无法向数据库工作线程派发任务")));
+    emit taskFinished(RejectedResult(task.requestId, DatabaseErrorCode::ConnectionFailed,
+        QStringLiteral("无法向数据库工作线程派发任务")));
     setState(DatabaseExecutorState::Failed);
     cancelPending(DatabaseErrorCode::Cancelled,
-                  QStringLiteral("数据库工作线程不可用，任务已取消"));
+        QStringLiteral("数据库工作线程不可用，任务已取消"));
     requestWorkerShutdown();
 }
 // 请求数据库工作线程关闭
@@ -275,16 +287,18 @@ void DatabaseExecutor::requestWorkerShutdown()
         onWorkerThreadFinished();
         return;
     }
-    QMetaObject::invokeMethod(worker_, [worker = worker_] {
-        worker->shutdown();
-    }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(
+        worker_, [worker = worker_] {
+            worker->shutdown();
+        },
+        Qt::QueuedConnection);
 }
 // 取消所有未派发任务
 void DatabaseExecutor::cancelPending(DatabaseErrorCode code, const QString& message)
 {
     while (!pendingTasks_.isEmpty()) {
         const DatabaseTask task = pendingTasks_.dequeue();
-        emit taskFinished(rejectedResult(task.requestId, code, message));
+        emit taskFinished(RejectedResult(task.requestId, code, message));
     }
 }
 // 设置执行器状态
@@ -297,9 +311,9 @@ void DatabaseExecutor::setState(DatabaseExecutorState state)
     emit stateChanged(state_);
 }
 // 创建拒绝结果
-DatabaseResult DatabaseExecutor::rejectedResult(const QUuid& requestId,
-                                                DatabaseErrorCode code,
-                                                const QString& message) const
+DatabaseResult DatabaseExecutor::RejectedResult(const QUuid& requestId,
+    DatabaseErrorCode code,
+    const QString& message) const
 {
     DatabaseResult result;
     result.requestId = requestId;
@@ -307,4 +321,3 @@ DatabaseResult DatabaseExecutor::rejectedResult(const QUuid& requestId,
     result.error.message = message;
     return result;
 }
-

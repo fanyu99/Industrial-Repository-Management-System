@@ -1,3 +1,4 @@
+// 数据库执行器 DatabaseExecutor
 #pragma once
 
 #include "DatabaseTypes.h"
@@ -34,9 +35,9 @@ private slots:
     void onWorkerInitialized(); // 数据库工作线程初始化完成
     void onWorkerInitializationFailed(const DatabaseError& error); // 数据库工作线程初始化失败
     void onTaskCompleted(const DatabaseResult& result); // 任务完成
-    void onDrainTimeout();  // 超时
-    void onWorkerShutdownCompleted();   // 数据库工作线程关闭完成
-    void onWorkerThreadFinished();   // 数据库工作线程完成
+    void onDrainTimeout(); // 超时
+    void onWorkerShutdownCompleted(); // 数据库工作线程关闭完成
+    void onWorkerThreadFinished(); // 数据库工作线程完成
 
 private:
     void submitTaskInOwnerThread(const DatabaseTask& task); // 提交数据库任务到主线程
@@ -44,18 +45,15 @@ private:
     void requestWorkerShutdown(); // 请求数据库工作线程关闭
     void cancelPending(DatabaseErrorCode code, const QString& message); // 取消待处理任务
     void setState(DatabaseExecutorState state); // 设置执行器状态
-    [[nodiscard]] DatabaseResult rejectedResult(const QUuid& requestId,
-                                                DatabaseErrorCode code,
-                                                const QString& message) const;
+    [[nodiscard]] DatabaseResult RejectedResult(const QUuid& requestId, DatabaseErrorCode code, const QString& message) const;
 
     DatabaseConfig config_; // 数据库配置
     QThread workerThread_; // 工作线程
     QPointer<DatabaseWorker> worker_; // 数据库工作线程指针
     QQueue<DatabaseTask> pendingTasks_; // 待处理任务队列
-    QTimer* drainTimer_ { nullptr }; // 空闲超时定时器
+    QTimer* drainTimer_ { nullptr }; // 排空超时定时器
     DatabaseExecutorState state_ { DatabaseExecutorState::Starting }; // 执行器状态
     bool taskInFlight_ { false }; // 任务是否执行中
     bool workerShutdownRequested_ { false }; // 数据库工作线程关闭请求
     bool shutdownFinishedEmitted_ { false }; // 关闭完成信号是否发送
 };
-
