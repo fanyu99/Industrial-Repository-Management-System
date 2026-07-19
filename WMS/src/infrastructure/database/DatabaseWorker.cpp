@@ -1,7 +1,7 @@
-// 数据库工作线程 DatabaseWorker
+// 数据库工作对象 DatabaseWorker
 #include "DatabaseWorker.h"
 
-// 数据库工作线日志分类
+// 数据库工作对象日志分类
 Q_LOGGING_CATEGORY(databaseWorkerLog, "wms.database.worker")
 
 namespace {
@@ -130,10 +130,10 @@ void DatabaseWorker::checkHealth()
         return;
     }
     DatabaseError error;
-    // 如果连接无效
+    // 如果连接无效,输出错误信息
     if (!ensureConnectionOpen(error)) {
-        // 输出数据库工作线程日志
-        qCWarning(databaseWorkerLog) << error.message << error.databaseText;
+        // 输出数据库工作对象日志
+        qCWarning(databaseWorkerLog) << error.message<<" " << error.databaseText;
         return;
     }
     // 进行健康查询
