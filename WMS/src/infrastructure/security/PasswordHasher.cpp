@@ -24,16 +24,20 @@ bool PasswordHashRecord::isValid() const
 QPair<PasswordHashRecord, PasswordHashError> PasswordHasher::hashPassword(const QString& password, const PasswordHashPolicy& policy) const
 {
     PasswordHashRecord record;
+    // 校验策略是否有效
     if (!policy.isValid()) {
         return { record, PasswordHashError::InvalidPolicy };
     }
+    // 校验密码是否有效
     if (password.isEmpty())
         return { record, PasswordHashError::InvalidPassword };
+
+    // 设置记录
     record.hashName = policy.hashName;
     record.algorithmVersion = policy.algorithmVersion;
     record.iterations = policy.iterations;
     record.salt = generateSalt(policy);
-    // TODO: 获取hash值
+    // 获取hash值
     record.hash = QPasswordDigestor::deriveKeyPbkdf2(QCryptographicHash::Sha256, password.toUtf8(), record.salt, record.iterations, policy.hashLength);
     return { record, record.hash.isEmpty() ? PasswordHashError::HashGenerateError : PasswordHashError::None };
 }

@@ -202,7 +202,7 @@ void DatabaseExecutor::onDrainTimeout()
         requestWorkerShutdown();
     }
 }
-// 超时关闭计时器完成关闭
+// 完成Shutdown,停止排空计时器
 void DatabaseExecutor::onWorkerShutdownCompleted()
 {
     drainTimer_->stop();

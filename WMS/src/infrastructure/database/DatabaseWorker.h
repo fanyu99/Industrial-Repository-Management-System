@@ -5,7 +5,6 @@
 3.数据库关闭:关闭数据库连接
 */
 #pragma once
-
 #include "DatabaseTypes.h"
 #include <QObject>
 #include <QSqlDatabase>
@@ -16,7 +15,7 @@
 #include <QString>
 #include <QLoggingCategory>
 #include <QSqlRecord>
-
+#include <optional>
 class DatabaseWorker final : public QObject { // 设置终类
     Q_OBJECT
 public:

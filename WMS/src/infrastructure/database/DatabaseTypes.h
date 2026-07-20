@@ -32,7 +32,7 @@ enum class StatementType {
 // 2.数据库任务类型
 enum class DatabaseTaskType { Single,
     Transaction };
-// 3.数据库错误码       
+// 3.数据库错误码
 enum class DatabaseErrorCode {
     None, // 无错误
     InvalidTask, // 无效任务
@@ -87,6 +87,8 @@ struct DatabaseStatement {
     StatementType type { StatementType::Query }; // 语句类型
     QString sql; // SQL 语句
     QVariantMap parameters; // 参数
+    // expectedAffectedRows 仅用于命令语句,如果optional为空,不参与检查
+    std::optional<int>expectedAffectedRows; // 用于命令语句的预期影响行数,作为守卫,检查语句结果是否符合预期
     // 强制检查是否有效
     [[nodiscard]] bool isValid() const
     {
@@ -135,16 +137,32 @@ struct DatabaseError {
 struct StatementResult {
     QStringList columns; // 列名
     QList<QVariantList> rows; // 行数据
-    qint64 affectedRows { 0 }; // 行数
+    qint64 affectedRows { 0 }; // 真实影响的行数(用于affctedRows守卫)
     QVariant lastInsertId; // 最后插入 ID
 };
-// 10.数据库结果
+// 10. 数据库事务执行结果的状态
+enum class DatabaseResultStatus {
+    SingleSucceeded, // 单条语句成功
+    Committed, // 已提交
+    SqlExecutionFailed, // SQL执行失败
+    TransactionBeginFailed, // 事务开始失败
+    TransactionCommitFailed, // 事务提交失败
+    TransactionRolledBack, // 事务进行回滚
+    AffectedRowsConditionNotMet, // 影响行数不符合预期条件
+    Canceled, // 已取消
+    Timeout // 超时
+    };
+// 11.数据库结果
 struct DatabaseResult {
     QUuid requestId; // 请求ID
-    bool success { false }; // 是否成功
+    DatabaseResultStatus status { DatabaseResultStatus::SqlExecutionFailed }; // 结果状态
     QList<StatementResult> statementResults; // 语句结果
     int failedStatementIndex { -1 }; // 失败语句索引
     DatabaseError error; // 错误信息
+    bool isCommitted() const // 是否提交
+    {
+        return status == DatabaseResultStatus::Committed;
+    }
 };
 
 // 注册元类型,用于信号槽传递等

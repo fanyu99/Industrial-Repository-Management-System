@@ -74,7 +74,10 @@ void DatabaseWorker::executeTask(const DatabaseTask& task)
     // 如果正在关闭/任务无效 , 发送信号
     if (shuttingDown_ || !task.isValid()) {
         DatabaseResult result;
-        result.success = false;
+        if (shuttingDown_)
+            result.status = DatabaseResultStatus::Canceled;
+        else if (!task.isValid())
+            result.status = DatabaseResultStatus::SqlExecutionFailed;
         result.requestId = task.requestId;
         result.error.code = shuttingDown_ ? DatabaseErrorCode::ShuttingDown
                                           : DatabaseErrorCode::InvalidTask;
@@ -89,7 +92,8 @@ void DatabaseWorker::executeTask(const DatabaseTask& task)
     DatabaseResult result;
     // 如果还未初始化/数据库连接无效
     if (!this->initialized_ || !ensureConnectionOpen(connectionError)) {
-        result.success = false;
+        if (task.type == DatabaseTaskType::Transaction)
+            result.status = DatabaseResultStatus::SqlExecutionFailed;
         result.requestId = task.requestId;
         result.error = connectionError;
         // 如果没有错误,则为连接错误(工作线程未初始化)
@@ -133,7 +137,7 @@ void DatabaseWorker::checkHealth()
     // 如果连接无效,输出错误信息
     if (!ensureConnectionOpen(error)) {
         // 输出数据库工作对象日志
-        qCWarning(databaseWorkerLog) << error.message<<" " << error.databaseText;
+        qCWarning(databaseWorkerLog) << error.message << " " << error.databaseText;
         return;
     }
     // 进行健康查询
@@ -222,6 +226,9 @@ bool DatabaseWorker::executeStatement(const DatabaseStatement& statement,
 // 执行单语句.返回数据库结果
 DatabaseResult DatabaseWorker::executeSingle(const DatabaseTask& task)
 {
+    if (task.type == DatabaseTaskType::Transaction) {
+        return executeTransaction(task);
+    }
     DatabaseResult result;
     result.requestId = task.requestId;
     StatementResult statementResult;
@@ -230,18 +237,22 @@ DatabaseResult DatabaseWorker::executeSingle(const DatabaseTask& task)
         return result;
     }
     // 执行成功
+    result.status = DatabaseResultStatus::SingleSucceeded;
     result.statementResults.append(statementResult);
-    result.success = true;
     return result;
 }
 
 // 执行事务.返回数据库结果
 DatabaseResult DatabaseWorker::executeTransaction(const DatabaseTask& task)
 {
+    if (task.type == DatabaseTaskType::Single) {
+        return executeSingle(task);
+    }
     DatabaseResult result;
     result.requestId = task.requestId;
     // 事务启动失败
     if (!database_.transaction()) {
+        result.status = DatabaseResultStatus::TransactionBeginFailed;
         result.error = sqlError(DatabaseErrorCode::TransactionFailed,
             QStringLiteral("启动数据库事务失败"), database_.lastError());
         return result;
@@ -250,27 +261,40 @@ DatabaseResult DatabaseWorker::executeTransaction(const DatabaseTask& task)
     for (qsizetype i = 0; i < task.statements.size(); ++i) {
         StatementResult statementResult;
         DatabaseError statementError;
+        const DatabaseStatement& statement = task.statements.at(i);
         // 执行语句失败,回滚事务并返回结果
-        if (!executeStatement(task.statements.at(i), statementResult, statementError)) {
+        if (!executeStatement(statement, statementResult, statementError)) {
             database_.rollback();
+            result.status = DatabaseResultStatus::SqlExecutionFailed;
             result.statementResults.clear();
             result.failedStatementIndex = static_cast<int>(i); // 设置失败语句的序号
             result.error = statementError;
             return result;
         }
-        result.statementResults.append(statementResult); // 执行成功后添加到结果
+        // 如果有预期受影响行数,且不符合预期的受影响行数,则回滚事务
+        else if (statement.expectedAffectedRows.has_value() && statementResult.affectedRows != statement.expectedAffectedRows.value()) {
+            database_.rollback();
+            result.status = DatabaseResultStatus::AffectedRowsConditionNotMet;
+            result.statementResults.append(statementResult);
+            result.failedStatementIndex = static_cast<int>(i); // 设置不匹配语句的序号
+            result.error = sqlError(DatabaseErrorCode::None,
+                QStringLiteral("事务回滚(%1 命令语句受影响行数不符合预期,预期%2,实际%3)").arg(i, statement.expectedAffectedRows.value(), statementResult.affectedRows), QSqlError());
+            return result;
+        } else
+            result.statementResults.append(statementResult); // 执行成功后添加到结果
     }
     // 提交事务失败,事务回滚
     if (!database_.commit()) {
         const QSqlError commitError = database_.lastError();
         database_.rollback();
+        result.status = DatabaseResultStatus::TransactionCommitFailed;
         result.statementResults.clear();
         result.error = sqlError(DatabaseErrorCode::TransactionFailed,
             QStringLiteral("提交数据库事务失败"), commitError);
         return result;
     }
     // 事务成功
-    result.success = true;
+    result.status = DatabaseResultStatus::Committed;
     return result;
 }
 

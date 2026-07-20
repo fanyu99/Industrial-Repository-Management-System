@@ -133,6 +133,9 @@ settings.ini
 secrets.h
 credentials.*
 appsettings.*.json
+.claude
+.agent
+.vscode
 
 # ============================================
 # Dependencies / Packages
