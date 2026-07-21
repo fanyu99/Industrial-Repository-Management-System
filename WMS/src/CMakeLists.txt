@@ -2,7 +2,7 @@
 qt_add_executable(WmsApp
     main.cpp
 )
-add_subdirectory(Core)
+add_subdirectory(infrastructure)
 
 target_link_libraries(WmsApp PRIVATE
     WmsCore

@@ -45,7 +45,7 @@ private:
     void requestWorkerShutdown(); // 请求数据库工作线程关闭
     void cancelPending(DatabaseErrorCode code, const QString& message); // 取消待处理任务
     void setState(DatabaseExecutorState state); // 设置执行器状态
-    [[nodiscard]] DatabaseResult RejectedResult(const QUuid& requestId, DatabaseErrorCode code, const QString& message) const;
+    [[nodiscard]] DatabaseResult rejectedResult(const QUuid& requestId, DatabaseResultStatus status, DatabaseErrorCode code, const QString& message) const;
 
     DatabaseConfig config_; // 数据库配置
     QThread workerThread_; // 工作线程

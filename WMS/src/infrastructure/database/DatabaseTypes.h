@@ -13,7 +13,6 @@
 */
 #pragma once
 
-#include <QtCore/QList>
 #include <QMetaType>
 #include <QString>
 #include <QStringList>
@@ -21,9 +20,8 @@
 #include <QVariant>
 #include <QVariantList>
 #include <QVariantMap>
-
-
-
+#include <QtCore/QList>
+#include <optional>
 // 1.语句类型
 enum class StatementType {
     Query, // 查询(SELECT等),业务层面需要注意处理rows,columns
@@ -81,6 +79,70 @@ struct DatabaseConfig {
             && maxResultRows > 0
             && shutdownDrainTimeoutMs >= 0;
     }
+    [[nodiscard]] bool isValid(QString& errormessage) const
+    {
+        if(qtDriver != QStringLiteral("QODBC"))
+        {
+            errormessage = QStringLiteral("Qt 数据库驱动必须为 QODBC");
+            return false;
+        }
+        if(odbcDriver.trimmed().isEmpty())
+        {
+            errormessage = QStringLiteral("ODBC 数据库驱动不能为空");
+            return false;
+        }
+        if(hostName.trimmed().isEmpty())
+        {
+            errormessage = QStringLiteral("主机名不能为空");
+            return false;
+        }
+        if(port <= 0 || port > 65535)
+        {
+            errormessage = QStringLiteral("端口号必须在 1-65535 范围内");
+            return false;
+        }
+        if(userName.trimmed().isEmpty())
+        {
+            errormessage = QStringLiteral("用户名不能为空");
+            return false;
+        }
+        if(password.trimmed().isEmpty())
+        {
+            errormessage = QStringLiteral("密码不能为空");
+            return false;
+        }
+        if(databaseName.trimmed().isEmpty())
+        {
+            errormessage = QStringLiteral("数据库名不能为空");
+            return false;
+        }
+        if(connectionTimeoutMs <= 0)
+        {
+            errormessage = QStringLiteral("连接超时时间必须大于 0");
+            return false;
+        }
+        if(healthCheckIntervalMs <= 0)
+        {
+            errormessage = QStringLiteral("健康检查间隔必须大于 0");
+            return false;
+        }
+        if(queueCapacity <= 0)
+        {
+            errormessage = QStringLiteral("任务队列容量必须大于 0");
+            return false;
+        }
+        if(maxResultRows <= 0)
+        {
+            errormessage = QStringLiteral("最大结果行数必须大于 0");
+            return false;
+        }
+        if(shutdownDrainTimeoutMs < 0)
+        {
+            errormessage = QStringLiteral("关闭超时时间必须大于等于 0");
+            return false;
+        }
+        return true;
+    }
 };
 // 6.数据库SQL语句
 struct DatabaseStatement {
@@ -88,14 +150,17 @@ struct DatabaseStatement {
     QString sql; // SQL 语句
     QVariantMap parameters; // 参数
     // expectedAffectedRows 仅用于命令语句,如果optional为空,不参与检查
-    std::optional<int>expectedAffectedRows; // 用于命令语句的预期影响行数,作为守卫,检查语句结果是否符合预期
+    std::optional<int> expectedAffectedRows; // 用于命令语句的预期影响行数,作为守卫,检查语句结果是否符合预期
     // 强制检查是否有效
     [[nodiscard]] bool isValid() const
     {
         if (sql.trimmed().isEmpty()
             || (type != StatementType::Query && type != StatementType::Command)) {
             return false;
-        }
+        } else if (type == StatementType::Query && expectedAffectedRows.has_value())
+            return false;
+        else if (type == StatementType::Command && expectedAffectedRows.has_value() && expectedAffectedRows.value() < 0)
+            return false;
         for (auto iterator = parameters.cbegin(); iterator != parameters.cend(); ++iterator) {
             if (iterator.key().trimmed().isEmpty()) {
                 return false;
@@ -148,12 +213,13 @@ enum class DatabaseResultStatus {
     TransactionBeginFailed, // 事务开始失败
     TransactionCommitFailed, // 事务提交失败
     TransactionRolledBack, // 事务进行回滚
+    TransactionRollbackFailed, // 事务回滚失败
     AffectedRowsConditionNotMet, // 影响行数不符合预期条件
     Canceled, // 已取消
     Timeout // 超时
-    };
+};
 // 11.数据库结果
-struct DatabaseResult {
+struct DatabaseResult { // 注意:表示已经尝试执行并获得数据库的结果,是否提交需要查看DatabaseResultStatus
     QUuid requestId; // 请求ID
     DatabaseResultStatus status { DatabaseResultStatus::SqlExecutionFailed }; // 结果状态
     QList<StatementResult> statementResults; // 语句结果
@@ -162,6 +228,19 @@ struct DatabaseResult {
     bool isCommitted() const // 是否提交
     {
         return status == DatabaseResultStatus::Committed;
+    }
+    bool isSucceeded() const // 判断是否成功
+    {
+        return status == DatabaseResultStatus::SingleSucceeded || isCommitted();
+    }
+    bool isRolledback() const // 是否回滚
+    {
+        return status == DatabaseResultStatus::TransactionRolledBack ||
+            status == DatabaseResultStatus::TransactionRollbackFailed ||
+            status == DatabaseResultStatus::AffectedRowsConditionNotMet ||
+            status == DatabaseResultStatus::TransactionCommitFailed ||
+            status == DatabaseResultStatus::Timeout ||
+            status == DatabaseResultStatus::SqlExecutionFailed;
     }
 };
 

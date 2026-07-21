@@ -1,5 +1,6 @@
 // 数据库工作对象 DatabaseWorker
 #include "DatabaseWorker.h"
+#include "DatabaseTypes.h"
 
 // 数据库工作对象日志分类
 Q_LOGGING_CATEGORY(databaseWorkerLog, "wms.database.worker")
@@ -264,21 +265,35 @@ DatabaseResult DatabaseWorker::executeTransaction(const DatabaseTask& task)
         const DatabaseStatement& statement = task.statements.at(i);
         // 执行语句失败,回滚事务并返回结果
         if (!executeStatement(statement, statementResult, statementError)) {
-            database_.rollback();
-            result.status = DatabaseResultStatus::SqlExecutionFailed;
+            // 回滚事务
+            bool rollbackSuccess = database_.rollback();
+            if (!rollbackSuccess) { // 如果回滚失败
+                result.status = DatabaseResultStatus::TransactionRollbackFailed;
+                result.error = sqlError(DatabaseErrorCode::TransactionFailed,
+                    QStringLiteral("执行%1语句失败,且回滚数据库事务失败!").arg(i), database_.lastError());
+            } else {
+                result.status = DatabaseResultStatus::SqlExecutionFailed;
+                result.error = statementError;
+            }
+            result.failedStatementIndex = static_cast<int>(i); // 设置失败语句的序号}
             result.statementResults.clear();
-            result.failedStatementIndex = static_cast<int>(i); // 设置失败语句的序号
-            result.error = statementError;
             return result;
         }
         // 如果有预期受影响行数,且不符合预期的受影响行数,则回滚事务
         else if (statement.expectedAffectedRows.has_value() && statementResult.affectedRows != statement.expectedAffectedRows.value()) {
-            database_.rollback();
-            result.status = DatabaseResultStatus::AffectedRowsConditionNotMet;
+            bool rollbackSuccess = database_.rollback();
+            if (!rollbackSuccess) { // 如果回滚失败
+                result.status = DatabaseResultStatus::TransactionRollbackFailed;
+            } else
+                result.status = DatabaseResultStatus::AffectedRowsConditionNotMet;
             result.statementResults.append(statementResult);
             result.failedStatementIndex = static_cast<int>(i); // 设置不匹配语句的序号
             result.error = sqlError(DatabaseErrorCode::None,
-                QStringLiteral("事务回滚(%1 命令语句受影响行数不符合预期,预期%2,实际%3)").arg(i, statement.expectedAffectedRows.value(), statementResult.affectedRows), QSqlError());
+                QStringLiteral("事务回滚(%1 命令语句受影响行数不符合预期,预期%2,实际%3)")
+                    .arg(i)
+                    .arg(statement.expectedAffectedRows.value())
+                    .arg(statementResult.affectedRows),
+                QSqlError());
             return result;
         } else
             result.statementResults.append(statementResult); // 执行成功后添加到结果
@@ -286,8 +301,10 @@ DatabaseResult DatabaseWorker::executeTransaction(const DatabaseTask& task)
     // 提交事务失败,事务回滚
     if (!database_.commit()) {
         const QSqlError commitError = database_.lastError();
-        database_.rollback();
-        result.status = DatabaseResultStatus::TransactionCommitFailed;
+        if (!database_.rollback()) {
+            result.status = DatabaseResultStatus::TransactionRollbackFailed;
+        } else
+            result.status = DatabaseResultStatus::TransactionCommitFailed;
         result.statementResults.clear();
         result.error = sqlError(DatabaseErrorCode::TransactionFailed,
             QStringLiteral("提交数据库事务失败"), commitError);

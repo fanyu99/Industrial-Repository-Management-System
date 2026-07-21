@@ -14,10 +14,10 @@
             "cacheVariables": {
                 "CMAKE_CXX_STANDARD": "17",
                 "CMAKE_CXX_STANDARD_REQUIRED": "ON",
-                "CMAKE_PREFIX_PATH": "D:/QT/6.11.1/mingw_64"
+                "CMAKE_PREFIX_PATH": "/home/fanyu1128/Qt/6.11.1/gcc_64"
             },
             "environment": {
-                "PATH": "D:/QT/6.11.1/mingw_64/bin;$penv{PATH}"
+                "PATH": "/home/fanyu1128/Qt/6.11.1/gcc_64/bin:$penv{PATH}"
             }
         },
         {

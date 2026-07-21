@@ -1,6 +1,7 @@
 // 数据库执行器 DatabaseExecutor
 #include "DatabaseExecutor.h"
 
+#include "DatabaseTypes.h"
 #include "DatabaseWorker.h"
 
 #include <QLoggingCategory>
@@ -222,19 +223,19 @@ void DatabaseExecutor::onWorkerThreadFinished()
 void DatabaseExecutor::submitTaskInOwnerThread(const DatabaseTask& task)
 {
     if (!task.isValid()) {
-        emit taskFinished(RejectedResult(task.requestId, DatabaseErrorCode::InvalidTask,
+        emit taskFinished(rejectedResult(task.requestId, DatabaseResultStatus::SqlExecutionFailed, DatabaseErrorCode::InvalidTask,
             QStringLiteral("数据库任务无效")));
         return;
     }
     if (state_ == DatabaseExecutorState::ShuttingDown
         || state_ == DatabaseExecutorState::Stopped
         || state_ == DatabaseExecutorState::Failed) {
-        emit taskFinished(RejectedResult(task.requestId, DatabaseErrorCode::ShuttingDown,
+        emit taskFinished(rejectedResult(task.requestId, DatabaseResultStatus::Canceled, DatabaseErrorCode::ShuttingDown,
             QStringLiteral("数据库执行器不再接收新任务")));
         return;
     }
     if (pendingTasks_.size() >= config_.queueCapacity) {
-        emit taskFinished(RejectedResult(task.requestId, DatabaseErrorCode::QueueFull,
+        emit taskFinished(rejectedResult(task.requestId, DatabaseResultStatus::Canceled, DatabaseErrorCode::QueueFull,
             QStringLiteral("数据库任务队列已满")));
         return;
     }
@@ -267,7 +268,7 @@ void DatabaseExecutor::dispatchNext()
     }
     // 任务失败
     taskInFlight_ = false;
-    emit taskFinished(RejectedResult(task.requestId, DatabaseErrorCode::ConnectionFailed,
+    emit taskFinished(rejectedResult(task.requestId, DatabaseResultStatus::SqlExecutionFailed, DatabaseErrorCode::ConnectionFailed,
         QStringLiteral("无法向数据库工作线程派发任务")));
     setState(DatabaseExecutorState::Failed);
     cancelPending(DatabaseErrorCode::Cancelled,
@@ -298,7 +299,7 @@ void DatabaseExecutor::cancelPending(DatabaseErrorCode code, const QString& mess
 {
     while (!pendingTasks_.isEmpty()) {
         const DatabaseTask task = pendingTasks_.dequeue();
-        emit taskFinished(RejectedResult(task.requestId, code, message));
+        emit taskFinished(rejectedResult(task.requestId, DatabaseResultStatus::Canceled, code, message));
     }
 }
 // 设置执行器状态
@@ -311,7 +312,8 @@ void DatabaseExecutor::setState(DatabaseExecutorState state)
     emit stateChanged(state_);
 }
 // 创建拒绝结果
-DatabaseResult DatabaseExecutor::RejectedResult(const QUuid& requestId,
+DatabaseResult DatabaseExecutor::rejectedResult(const QUuid& requestId,
+    DatabaseResultStatus status,
     DatabaseErrorCode code,
     const QString& message) const
 {
@@ -319,5 +321,6 @@ DatabaseResult DatabaseExecutor::RejectedResult(const QUuid& requestId,
     result.requestId = requestId;
     result.error.code = code;
     result.error.message = message;
+    result.status = status;
     return result;
 }
