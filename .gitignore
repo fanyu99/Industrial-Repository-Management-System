@@ -17,7 +17,7 @@
 *.exp
 tests/
 WmsTests/
-
+claude.md
 # Compiled Object files
 *.slo
 *.lo

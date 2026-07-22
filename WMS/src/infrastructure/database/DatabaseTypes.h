@@ -53,18 +53,18 @@ enum class DatabaseExecutorState {
 };
 // 5.数据库配置
 struct DatabaseConfig {
-    QString qtDriver { QStringLiteral("QODBC") }; // Qt 数据库驱动(使用QStringLiteral直接作为静态常量接收字面量,提高性能,仅读)
-    QString odbcDriver { QStringLiteral("MariaDB Unicode") }; // ODBC 数据库驱动
-    QString hostName { QStringLiteral("127.0.0.1") }; // 主机名
-    int port { 3306 }; // 端口号
-    QString userName; // 用户名
-    QString password; // 密码
-    QString databaseName; // 数据库名
-    int connectionTimeoutMs { 5000 }; // 连接超时时间
-    int healthCheckIntervalMs { 30000 }; // 健康检查间隔
-    int queueCapacity { 1000 }; // 任务队列容量
-    int maxResultRows { 10000 }; // 最大结果行数
-    int shutdownDrainTimeoutMs { 3000 }; // 关闭超时时间
+    QString qtDriver { QStringLiteral("") }; // Qt 数据库驱动(使用QStringLiteral直接作为静态常量接收字面量,提高性能,仅读)
+    QString odbcDriver { QStringLiteral("") }; // ODBC 数据库驱动
+    QString hostName { QStringLiteral("") }; // 主机名
+    int port { 0 }; // 端口号
+    QString userName{""}; // 用户名
+    QString password{""}; // 密码
+    QString databaseName{""}; // 数据库名
+    int connectionTimeoutMs { 0 }; // 连接超时时间
+    int healthCheckIntervalMs { 0 }; // 健康检查间隔
+    int queueCapacity { 0 }; // 任务队列容量
+    int maxResultRows { 0 }; // 最大结果行数
+    int shutdownDrainTimeoutMs { 0 }; // 关闭超时时间
     // 强制检查配置是否有效
     [[nodiscard]] bool isValid() const
     {
@@ -136,7 +136,7 @@ struct DatabaseConfig {
             errormessage = QStringLiteral("最大结果行数必须大于 0");
             return false;
         }
-        if(shutdownDrainTimeoutMs < 0)
+        if(shutdownDrainTimeoutMs <= 0)
         {
             errormessage = QStringLiteral("关闭超时时间必须大于等于 0");
             return false;

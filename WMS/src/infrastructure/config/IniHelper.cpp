@@ -1,5 +1,6 @@
 // 配置助手 IniHelper
 #include "IniHelper.h"
+#include <QFile>
 
 // 构造
 IniHelper::IniHelper(QString filePath)
@@ -11,7 +12,7 @@ IniHelper::IniHelper(QString filePath)
 // 判断是否有效
 bool IniHelper::isValid() const
 {
-    return settings_.status() == QSettings::NoError;
+    return settings_.status() == QSettings::NoError && QFile::exists(filePath_); // 检查配置文件是否存在/是否有效
 }
 
 // 获取配置文件路径
@@ -48,7 +49,7 @@ bool IniHelper::readBool(const QString& key, bool defaultValue) const
 {
     return settings_.value(key, defaultValue).toBool();
 }
-// 读取key对应的布尔值, 无默认值    
+// 读取key对应的布尔值, 无默认值
 bool IniHelper::readBool(const QString& key) const
 {
     return settings_.value(key).toBool();

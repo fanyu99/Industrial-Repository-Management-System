@@ -7,8 +7,8 @@ qt_add_library(ConfigManager
     DatabaseConfigLoader.cpp
     DatabaseConfigLoader.h
 )
-target_link_libraries(ConfigManager Qt6::Core)
+target_link_libraries(ConfigManager PUBLIC Qt6::Core WmsDatabase)
 target_include_directories(ConfigManager
-    PRIVATE
+    PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
