@@ -68,7 +68,7 @@ struct DatabaseConfig {
     // 强制检查配置是否有效
     [[nodiscard]] bool isValid() const
     {
-        return qtDriver == QStringLiteral("QODBC")
+        return !qtDriver.isEmpty()
             && !odbcDriver.trimmed().isEmpty()
             && !hostName.trimmed().isEmpty()
             && port > 0 && port <= 65535
@@ -81,9 +81,9 @@ struct DatabaseConfig {
     }
     [[nodiscard]] bool isValid(QString& errormessage) const
     {
-        if(qtDriver != QStringLiteral("QODBC"))
+        if(qtDriver.isEmpty())
         {
-            errormessage = QStringLiteral("Qt 数据库驱动必须为 QODBC");
+            errormessage = QStringLiteral("Qt 数据库驱动不能为空");
             return false;
         }
         if(odbcDriver.trimmed().isEmpty())

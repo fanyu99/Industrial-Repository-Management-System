@@ -33,10 +33,11 @@ void DatabaseWorker::initialize(const DatabaseConfig& config)
     // 设置数据库配置
     config_ = config;
     // 如果配置无效
-    if (!config_.isValid()) {
+    QString errorMessage;
+    if (!config_.isValid(errorMessage)) {
         DatabaseError error;
         error.code = DatabaseErrorCode::ConnectionFailed;
-        error.message = QStringLiteral("数据库配置无效，第一版仅支持 QODBC");
+        error.message = QStringLiteral("数据库配置无效: %1").arg(errorMessage);
         emit initializationFailed(error); // 释放信号,输出错误信息
         return;
     }

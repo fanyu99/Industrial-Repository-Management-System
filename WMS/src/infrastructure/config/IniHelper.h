@@ -15,6 +15,7 @@ enum class ConfigValueType {
     String, // 字符串值
     Int, // 整数值
     Bool, // 布尔值
+    Else, // 其他值
 };
 // 配置 值结果
 struct ConfigValueResult {

@@ -83,6 +83,7 @@ ConfigValueResult IniHelper::readValue(const QString& key, ConfigValueType value
                 result.value = value;
                 result.success = true;
             } else {
+                result.success = false;
                 result.error = ConfigError::InvalidValue;
                 result.errorMessage = QStringLiteral("无效值/非整数");
             }
@@ -93,12 +94,14 @@ ConfigValueResult IniHelper::readValue(const QString& key, ConfigValueType value
             if (result.value.canConvert<bool>() && result.value.isValid()) {
                 result.success = true;
             } else {
+                result.success = false;
                 result.error = ConfigError::InvalidValue;
                 result.errorMessage = QStringLiteral("无效值/非布尔值");
             }
             break;
         }
         default:
+            result.success = false;
             result.error = ConfigError::InvalidValue;
             result.errorMessage = QStringLiteral("未知值类型");
             break;
