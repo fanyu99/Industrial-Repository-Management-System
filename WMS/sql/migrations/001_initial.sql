@@ -36,7 +36,7 @@ created_at  updated_at
 CREATE TABLE users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '用户ID',
     username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
-    password_hash VARBINARY(255) NOT NULL COMMENT 'PBKDF2 派生密钥',
+    password_hash VARBINARY(255) NOT NULL COMMENT 'PBKDF2 Hash',
     password_salt VARBINARY(64) NOT NULL CHECK (LENGTH(password_salt) >= 16) COMMENT 'CSPRNG 随机盐, >=16 字节',
     password_algorithm VARCHAR(20) NOT NULL DEFAULT 'pbkdf2_hmac_sha256',
     password_iterations INT UNSIGNED NOT NULL COMMENT 'PBKDF2 迭代次数',

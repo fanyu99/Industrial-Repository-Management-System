@@ -17,6 +17,7 @@
 *.exp
 tests/
 WmsTests/
+Testing/
 # Compiled Object files
 *.slo
 *.lo
