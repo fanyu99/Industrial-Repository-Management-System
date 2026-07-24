@@ -5,6 +5,6 @@ add_subdirectory(security)
 add_subdirectory(config)
 target_link_libraries(WmsCore PUBLIC
     WmsDatabase
-    ConfigManager
-    PasswordHasher
+    WmsConfigManager
+    WmsSecurity
 )

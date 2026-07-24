@@ -42,10 +42,10 @@ CREATE TABLE users (
     password_iterations INT UNSIGNED NOT NULL COMMENT 'PBKDF2 迭代次数',
     real_name VARCHAR(50) NOT NULL COMMENT '真实姓名',
     role ENUM(
-        'admin',
-        'manager',
-        'operator'
-    ) NOT NULL DEFAULT 'operator',
+        'Admin',
+        'Manager',
+        'Operator'
+    ) NOT NULL DEFAULT 'Operator',
     is_active TINYINT(1) NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)) COMMENT '状态',
     created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
     updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',

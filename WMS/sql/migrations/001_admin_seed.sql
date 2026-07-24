@@ -16,12 +16,12 @@ INSERT INTO
         is_active
     )
 VALUES (
-        'admin_001',
+        'Admin_001',
         X'bc4611fa31fb88180e39a19d834c3c341615c7c9f7ba644c0eb9cf6de9b029ff',
         X'713e6cf3db210b1885ee75adf07baddd',
         'pbkdf2_hmac_sha256',
         10000,
         'FanYu',
-        'admin',
+        'Admin',
         1
     );
