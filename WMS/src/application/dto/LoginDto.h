@@ -3,12 +3,12 @@
 #include <QString>
 #include "AppError.h"
 #include "AuthenticatedUser.h"
-// 登录请求
+// 登录请求DTO
 struct LoginRequest{
     QString userName;
     QString password;
 };
-// 登录结果
+// 登录结果DTO
 struct LoginResult {
     bool success { false };
     std::optional<AuthenticatedUser> user;

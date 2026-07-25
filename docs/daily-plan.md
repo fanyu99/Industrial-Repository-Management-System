@@ -18,66 +18,100 @@
 - Day 6：IniHelper、DatabaseConfigLoader、ConfigManager、CMake 集成与配置单元测试已完成，构建和测试均已通过。
 - Day 7：版本化数据库 Schema、`001_initial.sql`、回滚脚本与验证 SQL 已完成。
 - Day 8：PasswordHasher、PBKDF2 单元测试、算法边界修正与管理员 seed SQL 已完成，单元测试已通过。
+- Day 9：认证领域模型、`SessionManager`、角色权限边界、`AuthService` 与 Fake Repository 测试已完成。
+- Day 10：Product Entity、DTO、`IProductRepository`、`ProductService`、`FakeProductRepository` 与 ProductService 单元测试已完成；延迟回调场景已验证 owner 销毁后不会触发调用方 callback。
 
 ## 当前滚动计划
 
-> 调整依据：数据库执行器、配置模块、版本化 Schema、PasswordHasher 与管理员 seed SQL 已完成。当前进入认证领域模型、会话和权限边界，随后推进 Product 纵向切片。
+> 调整依据：认证与 Product 应用层纵向切片已完成，当前应继续沿详细计划 C.7 “Repository 与 Application Service”推进，把 `IProductRepository` 的 MySQL 实现接到已完成的异步数据库执行器上。Product MySQL Repository 稳定后，再进入 Product 页面/Model 和入库事务主线。
 
-### Day 9：认证领域模型、SessionManager 与权限边界（当前任务）
+### Day 11：MySQL ProductRepository 与数据库结果映射（当前任务）
 
-**目标：** 建立登录用例需要的用户、角色、会话和权限模型，明确 UI、Service 与 Repository 的授权职责。
-
-**知识点：**
-
-- Entity、DTO、Value Object 和持久化记录的区别。
-- `Role`、`Permission` 与 `hasPermission(action)`。
-- SessionManager 的生命周期和当前用户状态。
-- 隐藏菜单为什么不是安全边界，Service 为什么必须再次鉴权。
-- 登录失败时如何避免泄露用户名是否存在。
-
-**实施任务：**
-
-- 定义用户身份、角色和权限动作模型。
-- 设计 SessionManager 的登录、登出、当前用户和权限查询接口。
-- 设计认证 Repository Port，隐藏 SQL 和原始 `DatabaseResult`。
-- 设计 AuthService 的认证流程与统一错误模型。
-- 使用 Fake Repository 测试登录和权限规则，不依赖真实数据库。
-
-**验收标准：**
-
-- 未登录状态不能通过权限检查。
-- 登录、登出和切换会话后的状态一致。
-- Service 层会执行权限校验，不能只依赖 UI 菜单过滤。
-- 认证测试可以使用 Fake Repository 独立运行。
-- UI 和 Service 不直接拼接认证 SQL。
-
-### Day 10：Product Entity、DTO 与 Repository 契约
-
-**目标：** 开始详细计划中的物资纵向切片，先稳定领域模型、分页请求和 Repository 边界。
+**目标：** 实现 `IProductRepository` 的 MySQL 版本，让 ProductService 可以在不修改上层接口的情况下使用真实数据库查询和写入物资数据。
 
 **知识点：**
 
-- Product Entity、DTO、分页结果和筛选条件的职责。
-- Repository Port 与 MySQL Repository 实现的依赖方向。
-- 异步 Operation 的 owner、requestId、`QPointer` 和 latest-wins。
-- 唯一编码、分类、单位和停用规则应位于哪一层。
-- Repository 结果到 `AppError` 的映射。
+- Repository Port 与 Infrastructure Adapter 的关系。
+- Prepared Statement、命名参数与 SQL 注入防护。
+- `DatabaseExecutor` 异步任务到 Repository callback 的结果映射。
+- `DatabaseResult`、`QVariantMap/QVariantList` 到 `Product`/DTO 的字段校验。
+- 分页查询中的 `LIMIT/OFFSET`、`COUNT(*)` 与排序稳定性。
+- Repository 错误到 `AppError` 的分类：数据库失败、唯一键冲突、记录不存在。
 
 **实施任务：**
 
-- 定义 Product、ProductFilter、ProductPage 和相关 DTO。
-- 设计 `IProductRepository` 的分页、查询和写入契约。
-- 明确异步请求对象的所有权和回调生命周期。
-- 设计 ProductService 的业务校验和权限边界。
-- 编写 Repository 契约与 Fake Repository 测试方案。
+- 在 infrastructure 层设计 `MySqlProductRepository` 的位置、CMake target 和依赖方向。
+- 实现 `listProducts()`：筛选条件、分页、总数、字段映射和排序。
+- 实现 `findByCode()`：用于 ProductService 的唯一编码判断。
+- 实现 `createProduct()`、`updateProduct()`、`setProductActive()` 的参数化 SQL。
+- 统一处理 owner 生命周期：Repository 内部也使用 `QPointer`，不向已销毁 owner 回调。
+- 为真实 Repository 准备集成测试策略，优先覆盖 SQL 映射和错误映射。
 
 **验收标准：**
 
-- Presentation、Service 不依赖 SQL、`QSqlQuery` 或原始数据库行。
-- 分页结果包含记录、总数、页码和页大小。
-- 物资编码唯一、分类单位有效和停用规则有明确责任层。
-- 异步请求不会向已经销毁的 owner 回调。
-- 后续 MySQL Repository 可以在不修改上层接口的情况下接入。
+- `ProductService` 不需要改接口即可切换到 MySQL Repository。
+- 所有 SQL 均使用参数绑定，不拼接用户输入。
+- 分页结果包含 `items/total/page/pageSize`，并且排序稳定。
+- 数据库列缺失、类型错误、SQL 失败能映射为可理解的 `AppError`。
+- 物资编码重复、产品不存在、停用失败有明确错误路径。
+- owner 销毁后不会触发上层 callback。
+
+### Day 12：ProductTableModel 与物资列表页面查询闭环
+
+**目标：** 建立 Product 列表的 Presentation 层基础，让 UI 通过 ProductService 查询分页数据，而不是直接接触 Repository 或 SQL。
+
+**知识点：**
+
+- `QAbstractTableModel` 的职责、`rowCount()`、`columnCount()`、`data()`、`headerData()`。
+- `beginResetModel()/endResetModel()` 与视图刷新边界。
+- Model 只保存 DTO，不保存 SQL 或数据库连接。
+- 页面状态：Loading、Ready、Empty、Error。
+- 查询按钮、筛选条件、分页控件和防重复提交。
+- `QPointer`、latest-wins 与连续搜索只接受最新结果。
+
+**实施任务：**
+
+- 设计 `ProductTableModel` 的列枚举、数据角色和更新接口。
+- 使用 `QAbstractItemModelTester` 或 QTest 验证 Model 基本契约。
+- 设计 Product 页面查询流程：构造 filter/pageRequest，调用 Service，更新 Model。
+- 处理空结果、错误提示、加载态和重复点击。
+- 保持 Presentation 只依赖 application 层接口，不包含 SQL 和 `DatabaseExecutor`。
+
+**验收标准：**
+
+- Model 的行列数、表头、单元格数据和重置行为测试通过。
+- 页面查询成功时能显示分页物资列表。
+- 查询中页面有明确 Loading 状态，并避免重复请求造成错乱。
+- 空数据和错误结果有独立状态，不与正常列表混淆。
+- UI、Model 不直接认识 MySQL、`QSqlQuery` 或原始 `DatabaseResult`。
+
+### Day 13：物资创建、编辑、启用/停用 UI 与端到端纵向切片
+
+**目标：** 在 Product 页面完成物资主数据的基础 CRUD 交互，形成“权限校验 → 业务校验 → Repository → 数据刷新”的可演示闭环。
+
+**知识点：**
+
+- Dialog/Form 的输入校验与 Service 校验的分工。
+- 创建、编辑、启用/停用三类命令的 UI 状态管理。
+- 权限控制：隐藏/禁用按钮只是体验，Service 才是安全边界。
+- 乐观刷新与重新查询的取舍。
+- 业务错误、数据库错误和权限错误的用户提示差异。
+
+**实施任务：**
+
+- 设计 Product 编辑表单的数据收集、默认值和错误展示。
+- 接入 `createProduct()`、`updateProduct()`、`setProductActive()`。
+- 根据当前用户权限控制按钮可见/可用状态。
+- 操作成功后刷新当前分页或更新当前 Model 数据。
+- 覆盖重复编码、无效分类/单位、无权限、停用不存在产品等场景。
+
+**验收标准：**
+
+- 管理员可以完成创建、编辑、启用/停用并刷新列表。
+- 无权限用户不能通过 UI 或 Service 执行写操作。
+- 重复编码和无效输入显示为业务校验错误。
+- 操作过程中 owner 销毁不会出现悬空回调。
+- Product 主数据形成一个可运行、可测试、可演示的纵向切片。
 
 ## 滚动更新规则
 

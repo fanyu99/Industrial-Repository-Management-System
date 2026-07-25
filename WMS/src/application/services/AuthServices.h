@@ -28,7 +28,7 @@ public:
     [[nodiscard]] std::optional<AuthenticatedUser> currentUser() const; // 当前的用户
     [[nodiscard]] bool hasPermission(Permission permission) const noexcept; // 是否有权限
     [[nodiscard]] std::optional<AppError> authorize(Permission permission) const; // 进行权限认证
-
+        
 private:
     [[nodiscard]] std::optional<AppError> validateLoginRequest(const LoginRequest& loginRequest) const; // 校验登录请求
     [[nodiscard]] AuthenticatedUser buildAuthenticatedUser(const AuthCredentialRecord& record) const; // 创建认证用户

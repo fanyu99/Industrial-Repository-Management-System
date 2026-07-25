@@ -30,17 +30,14 @@ inline bool roleHasPermission(Role role, Permission permission)
         // 管理员权限
     case Role::Admin:
         return true;
-        // 经理权限
+        // 主管权限
     case Role::Manager:
         switch (permission) {
-        case Permission::ViewDashboard:
-        case Permission::ViewProducts:
-        case Permission::ViewInboundOrders:
-        case Permission::ViewOutboundOrders:
-        case Permission::ExportData:
-            return true;
-        default:
+        case Permission::ManageUsers:
+        case Permission::ViewUsers:
             return false;
+        default:
+            return true;
         }
         // 操作员权限
     case Role::Operator:
@@ -51,12 +48,11 @@ inline bool roleHasPermission(Role role, Permission permission)
         case Permission::ViewOutboundOrders:
         case Permission::CreateInboundOrders:
         case Permission::CreateOutboundOrders:
-        case Permission::ConfirmInboundOrders:
-        case Permission::ConfirmOutboundOrders:
             return true;
         default:
             return false;
         }
+    default:
+            return false;
     }
-    return false;
 }

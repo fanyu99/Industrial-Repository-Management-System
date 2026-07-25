@@ -18,6 +18,8 @@ enum class AppErrorCode {
     UserDisabled, // 用户被禁用
     NotAuthenticated, // 未认证
     PermissionDenied, // 权限不足
+    // Product
+    InvalidProduct,
     // Database / Repository
     RepositoryFailure, // 仓库失败
     DatabaseFailure, // 数据库失败
@@ -68,7 +70,14 @@ struct AppError {
             QStringLiteral("没有执行该操作的权限")
         };
     }
-
+    static AppError invalidProduct()
+    {
+        return {
+            AppErrorCategory::Validation,
+            AppErrorCode::InvalidProduct,
+            QStringLiteral("产品信息无效")
+        };
+    }
     static AppError repositoryFailure(const QString& message)
     {
         return {
