@@ -24,6 +24,8 @@ bool SessionManager::hasPermission(Permission permission) const noexcept
 // 开启会话
 void SessionManager::startSession(const AuthenticatedUser& user)
 {
+    if (!user.isValid())
+        return;
     currentUser_ = user;
     if (isAuthenticated()) {
         emit sessionChanged();
@@ -33,10 +35,10 @@ void SessionManager::startSession(const AuthenticatedUser& user)
 // 关闭会话
 void SessionManager::endSession()
 {
-    if (isAuthenticated()) // 如果认证了,才发送会话改变信号
-    {
-        currentUser_.reset();
-        emit sessionEnded();
-        emit sessionChanged();
-    }
+    if (!isAuthenticated())
+    return;
+    // 如果认证了,才发送会话改变信号
+    currentUser_.reset();
+    emit sessionChanged();
+    emit sessionEnded();
 }

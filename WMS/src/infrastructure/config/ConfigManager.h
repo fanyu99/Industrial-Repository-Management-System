@@ -9,7 +9,7 @@ public:
     explicit ConfigManager(const QString& filePath);
     ~ConfigManager()=default;
     [[nodiscard]] QString errorMessage() const; // 获取错误信息
-    [[nodiscard]] DatabaseConfig loadDatabaseConfig(); // 加载数据库配置
+     DatabaseConfig loadDatabaseConfig(); // 加载数据库配置
 private:
     QString configPath_; // 配置文件路径
     QString errorMessage_; // 错误信息

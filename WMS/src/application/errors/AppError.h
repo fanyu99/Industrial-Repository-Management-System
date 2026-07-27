@@ -19,7 +19,9 @@ enum class AppErrorCode {
     NotAuthenticated, // 未认证
     PermissionDenied, // 权限不足
     // Product
-    InvalidProduct,
+    InvalidProduct, // 无效的产品信息
+    ProductNotFound, // 产品不存在
+    DuplicateProduct, // 产品已存在
     // Database / Repository
     RepositoryFailure, // 仓库失败
     DatabaseFailure, // 数据库失败
@@ -43,7 +45,14 @@ struct AppError {
     {
         return {};
     }
-
+    static AppError invalidInput()
+    {
+        return {
+            AppErrorCategory::Validation,
+            AppErrorCode::InvalidInput,
+            QStringLiteral("用户名或密码错误/无效")
+        };
+    }
     static AppError invalidCredentials()
     {
         return {
@@ -83,6 +92,14 @@ struct AppError {
         return {
             AppErrorCategory::Database,
             AppErrorCode::RepositoryFailure,
+            message
+        };
+    }
+    static AppError databaseFailure(const QString& message)
+    {
+        return {
+            AppErrorCategory::Database,
+            AppErrorCode::DatabaseFailure,
             message
         };
     }

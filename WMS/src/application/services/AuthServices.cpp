@@ -146,3 +146,59 @@ void AuthService::logout()
 {
     sessionManager_.endSession();
 }
+// 将密码哈希错误映射为应用错误
+static AppError mapPasswordHashError(PasswordHashError error) // 映射密码哈希错误
+{
+    switch (error) {
+    case PasswordHashError::None:
+        return AppError::none();
+    case PasswordHashError::InvalidPolicy:
+        return AppError {
+            AppErrorCategory::System,
+            AppErrorCode::UnknownError,
+            QStringLiteral("密码哈希策略无效")
+        };
+    case PasswordHashError::InvalidPassword:
+        return AppError::invalidCredentials();
+    case PasswordHashError::HashGenerateError:
+        return AppError {
+            AppErrorCategory::System,
+            AppErrorCode::UnknownError,
+            QStringLiteral("密码哈希hash生成错误")
+        };
+    default:
+        return AppError {
+            AppErrorCategory::System,
+            AppErrorCode::UnknownError,
+            QStringLiteral("未知错误")
+        };
+    }
+}
+// 将密码校验错误映射为应用错误
+static AppError mapPasswordVerifyError(PasswordVerifyError error) // 映射密码校验错误
+{
+    switch (error) {
+    case PasswordVerifyError::None:
+        return AppError::none();
+    case PasswordVerifyError::WrongPassword:
+        return AppError::invalidCredentials();
+    case PasswordVerifyError::InvalidRecord:
+        return AppError {
+            AppErrorCategory::Validation,
+            AppErrorCode::UnknownError,
+            QStringLiteral("密码记录无效")
+        };
+    case PasswordVerifyError::HashGenerateError:
+        return AppError {
+            AppErrorCategory::System,
+            AppErrorCode::UnknownError,
+            QStringLiteral("密码校验hash生成错误")
+        };
+    default:
+        return AppError {
+            AppErrorCategory::System,
+            AppErrorCode::UnknownError,
+            QStringLiteral("未知错误")
+        };
+    }
+}

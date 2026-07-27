@@ -18,7 +18,7 @@ public:
     explicit DatabaseExecutor(const DatabaseConfig& config, QObject* parent = nullptr);
     ~DatabaseExecutor() override;
 
-    [[nodiscard]] QUuid submitTask(DatabaseTask task); // 提交数据库任务
+     QUuid submitTask(DatabaseTask task); // 提交数据库任务
     [[nodiscard]] DatabaseExecutorState state() const noexcept; // 获取执行器状态
 
 public slots:

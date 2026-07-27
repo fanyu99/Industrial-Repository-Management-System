@@ -13,6 +13,6 @@ struct Product {
     // 检查产品对象是否合法
     [[nodiscard]] bool isValid() const
     {
-        return !code.isEmpty() && !name.isEmpty() && categoryId > 0 && unitId > 0 && !specification.isEmpty() && safetyStock >= 0;
+        return !code.trimmed().isEmpty() && !name.trimmed().isEmpty() && categoryId > 0 && unitId > 0  && safetyStock >= 0;
     }
 };
