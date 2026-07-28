@@ -20,43 +20,13 @@
 - Day 8：PasswordHasher、PBKDF2 单元测试、算法边界修正与管理员 seed SQL 已完成，单元测试已通过。
 - Day 9：认证领域模型、`SessionManager`、角色权限边界、`AuthService` 与 Fake Repository 测试已完成。
 - Day 10：Product Entity、DTO、`IProductRepository`、`ProductService`、`FakeProductRepository` 与 ProductService 单元测试已完成；延迟回调场景已验证 owner 销毁后不会触发调用方 callback。
+- Day 11：`MySqlProductRepository` 已完成，包含物资分页查询、按编码查询、创建、更新、启用/停用状态、数据库结果映射和 owner 生命周期守卫；debug 构建已通过。
 
 ## 当前滚动计划
 
-> 调整依据：认证与 Product 应用层纵向切片已完成，当前应继续沿详细计划 C.7 “Repository 与 Application Service”推进，把 `IProductRepository` 的 MySQL 实现接到已完成的异步数据库执行器上。Product MySQL Repository 稳定后，再进入 Product 页面/Model 和入库事务主线。
+> 调整依据：Product 应用层和 MySQL Repository 已完成，当前应继续沿详细计划 C.7 “Repository 与 Application Service”向 Presentation 层推进，让物资主数据从服务层查询形成可显示、可测试的列表闭环。列表 Model 稳定后，再接入创建、编辑、启用/停用 UI 和后续入库事务主线。
 
-### Day 11：MySQL ProductRepository 与数据库结果映射（当前任务）
-
-**目标：** 实现 `IProductRepository` 的 MySQL 版本，让 ProductService 可以在不修改上层接口的情况下使用真实数据库查询和写入物资数据。
-
-**知识点：**
-
-- Repository Port 与 Infrastructure Adapter 的关系。
-- Prepared Statement、命名参数与 SQL 注入防护。
-- `DatabaseExecutor` 异步任务到 Repository callback 的结果映射。
-- `DatabaseResult`、`QVariantMap/QVariantList` 到 `Product`/DTO 的字段校验。
-- 分页查询中的 `LIMIT/OFFSET`、`COUNT(*)` 与排序稳定性。
-- Repository 错误到 `AppError` 的分类：数据库失败、唯一键冲突、记录不存在。
-
-**实施任务：**
-
-- 在 infrastructure 层设计 `MySqlProductRepository` 的位置、CMake target 和依赖方向。
-- 实现 `listProducts()`：筛选条件、分页、总数、字段映射和排序。
-- 实现 `findByCode()`：用于 ProductService 的唯一编码判断。
-- 实现 `createProduct()`、`updateProduct()`、`setProductActive()` 的参数化 SQL。
-- 统一处理 owner 生命周期：Repository 内部也使用 `QPointer`，不向已销毁 owner 回调。
-- 为真实 Repository 准备集成测试策略，优先覆盖 SQL 映射和错误映射。
-
-**验收标准：**
-
-- `ProductService` 不需要改接口即可切换到 MySQL Repository。
-- 所有 SQL 均使用参数绑定，不拼接用户输入。
-- 分页结果包含 `items/total/page/pageSize`，并且排序稳定。
-- 数据库列缺失、类型错误、SQL 失败能映射为可理解的 `AppError`。
-- 物资编码重复、产品不存在、停用失败有明确错误路径。
-- owner 销毁后不会触发上层 callback。
-
-### Day 12：ProductTableModel 与物资列表页面查询闭环
+### Day 12：ProductTableModel 与物资列表页面查询闭环（当前任务）
 
 **目标：** 建立 Product 列表的 Presentation 层基础，让 UI 通过 ProductService 查询分页数据，而不是直接接触 Repository 或 SQL。
 
@@ -113,6 +83,34 @@
 - 操作过程中 owner 销毁不会出现悬空回调。
 - Product 主数据形成一个可运行、可测试、可演示的纵向切片。
 
+
+### Day 14：入库单领域模型与入库应用服务设计
+
+**目标：** 在物资主数据纵向切片稳定后，进入库存业务主线，先建立入库单、入库明细和入库业务服务的应用层结构，为后续事务写入库存流水与库存余额做准备。
+
+**知识点：**
+
+- 入库单 Header/Line 的建模方式。
+- 入库状态流转：草稿、已提交、已取消等状态边界。
+- 应用服务如何组织跨 Repository 的业务用例。
+- 入库数量、物资、仓库、操作人的业务校验。
+- 后续事务一致性需求：入库单、明细、库存流水、库存余额必须作为一个业务整体考虑。
+
+**实施任务：**
+
+- 设计入库单领域模型和 DTO，明确字段与数据库表的映射关系。
+- 定义 `IInboundRepository` 或等价 Port 接口，先描述应用层需要什么能力。
+- 设计 `InboundService` 的创建入库单、提交入库单、查询入库单基础接口。
+- 明确哪些校验属于 Service，哪些校验属于 Repository。
+- 暂不直接写复杂事务，先把接口、模型和测试边界确定清楚。
+
+**验收标准：**
+
+- 入库应用层接口不依赖 MySQL、`QSqlQuery` 或 UI。
+- 入库单与明细模型能表达后续事务所需的核心数据。
+- 创建/提交入库单的业务校验边界清晰。
+- 可以用 Fake Repository 编写应用服务单元测试。
+- 后续 MySQL Repository 能基于现有 `DatabaseExecutor` 实现事务写入。
 ## 滚动更新规则
 
 每天完成后：
