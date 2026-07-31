@@ -1,6 +1,5 @@
 // 认证用户(仅保存用户认证阶段的信息)
 #pragma once
-#include "PasswordHasher.h"
 #include "Role.h"
 #include <QString>
 // 已经登录的用户信息

@@ -139,7 +139,7 @@ void MySqlProductRepository::listProducts(
     // 2.查询分页数据
     DatabaseStatement statement2;
     statement2.type = StatementType::Query;
-    statement2.sql = QStringLiteral("SELECT p.id AS id,p.code AS code ,p.name AS name ,c.name AS category_name,u.name AS unit_name,p.specification AS specification,p.safety_stock AS safety_stock, p.is_active AS active FROM products p JOIN categories c ON c.id = p.category_id JOIN units u ON u.id = p.unit_id ") + whereResult + QStringLiteral(" ORDER BY p.id ASC LIMIT :limit OFFSET :offset ");
+    statement2.sql = QStringLiteral("SELECT p.id AS id,p.code AS code ,p.name AS name ,p.category_id AS category_id,c.name AS category_name,p.unit_id AS unit_id,u.name AS unit_name,p.specification AS specification,p.safety_stock AS safety_stock, p.is_active AS active FROM products p JOIN categories c ON c.id = p.category_id JOIN units u ON u.id = p.unit_id ") + whereResult + QStringLiteral(" ORDER BY p.id ASC LIMIT :limit OFFSET :offset ");
     statement2.parameters = parametersMap;
     statement2.parameters.insert("limit", request.pageSize);
     statement2.parameters.insert("offset", (request.page - 1) * request.pageSize);
@@ -206,9 +206,13 @@ void MySqlProductRepository::listProducts(
                             dto.safetyStock = row[j].toInt();
                         } else if (colName == "active") {
                             dto.active = row[j].toBool();
+                        } else if (colName == "category_id") {
+                            dto.categoryId = row[j].toUInt();
+                        } else if (colName == "unit_id") {
+                            dto.unitId = row[j].toUInt();
                         }
                     }
-                    if (dto.id == 0 || dto.code.trimmed().isEmpty() || dto.name.trimmed().isEmpty() || dto.categoryName.trimmed().isEmpty() || dto.unitName.trimmed().isEmpty() || dto.safetyStock < 0) {
+                    if (dto.id == 0 || dto.code.trimmed().isEmpty() || dto.name.trimmed().isEmpty() || dto.categoryName.trimmed().isEmpty() || dto.unitName.trimmed().isEmpty() || dto.safetyStock < 0 || dto.categoryId == 0 || dto.unitId == 0) {
                         callback(ProductPageResult { false, {}, AppError::repositoryFailure(QStringLiteral("产品分页数据映射异常")) });
                         return;
                     }
@@ -538,7 +542,7 @@ void MySqlProductRepository::setProductActive(
         return;
     }
     if (id == 0) {
-        callback(AppError{AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品id无效")});
+        callback(AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品id无效") });
         return;
     }
     // 创建语句

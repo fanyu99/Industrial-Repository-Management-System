@@ -1,5 +1,5 @@
 #pragma once
-#include "PasswordHasher.h"
+#include "PasswordHashTypes.h"
 #include "Role.h"
 #include <QString>
 // 认证凭证记录 -> PasswordHasher::verifyPassword() 校验密码

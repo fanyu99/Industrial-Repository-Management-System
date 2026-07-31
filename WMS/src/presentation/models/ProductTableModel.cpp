@@ -16,7 +16,7 @@ int ProductTableModel::columnCount(const QModelIndex& parent) const
 {
     if (parent.isValid())
         return 0;
-    return static_cast<int>(Column::CountColumn) + 1;
+    return static_cast<int>(Column::CountColumn); 
 }
 // 返回索引的数据
 QVariant ProductTableModel::data(const QModelIndex& index, int role) const

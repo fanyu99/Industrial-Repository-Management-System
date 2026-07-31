@@ -1,4 +1,4 @@
-qt_add_library(WmsRepositories
+qt_add_library(WmsRepositories STATIC
     MySqlProductRepository.cpp
     MySqlProductRepository.h
     MySqlAuthRepository.cpp

@@ -3,10 +3,11 @@ qt_add_library(
     ProductTableModel.cpp
     ProductTableModel.h
 )
-target_link_libraries(WmsModels PRIVATE 
+target_link_libraries(WmsModels PUBLIC
 Qt6::Core 
 Qt6::Widgets  
-WmsDto)
+WmsDto
+)
 target_include_directories(
     WmsModels
     PUBLIC 

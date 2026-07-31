@@ -5,7 +5,7 @@ qt_add_library(WmsSecurity STATIC
     SessionManager.cpp
     SessionManager.h
 )
-target_link_libraries(WmsSecurity PUBLIC Qt6::Core Qt6::Network WmsDomain)
+target_link_libraries(WmsSecurity PUBLIC Qt6::Core Qt6::Network WmsAuthDomain)
 target_include_directories(WmsSecurity PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

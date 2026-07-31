@@ -13,4 +13,5 @@ target_link_libraries(WmsApp PRIVATE
     WmsApplication
     WmsRepositories
     WmsPresentation
+    WmsDomain
 )

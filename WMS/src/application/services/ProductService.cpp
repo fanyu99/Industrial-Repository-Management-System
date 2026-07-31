@@ -333,3 +333,8 @@ void ProductService::setProductActive(
         }
     });
 }
+// 获取当前用户
+std::optional<AuthenticatedUser> ProductService::currentUser() const noexcept
+{
+    return sessionManager_.currentUser();
+}

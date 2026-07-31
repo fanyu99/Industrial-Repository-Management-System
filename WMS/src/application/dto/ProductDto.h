@@ -1,5 +1,6 @@
 // 产品DTO
 #pragma once
+#include "qtypes.h"
 #include <QString>
 #include <QVector>
 #include <optional>
@@ -9,8 +10,13 @@ struct ProductListItemDto {
     quint32 id { 0 };
     QString code;
     QString name;
+
+    quint32 categoryId { 0 };
     QString categoryName;
+
+    quint32 unitId { 0 };
     QString unitName;
+    
     QString specification;
     int safetyStock { 0 };
     bool active { false };
