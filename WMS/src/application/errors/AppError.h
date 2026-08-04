@@ -22,6 +22,10 @@ enum class AppErrorCode {
     InvalidProduct, // 无效的产品信息
     ProductNotFound, // 产品不存在
     DuplicateProduct, // 产品已存在
+    // InboundOrder
+    InvalidInboundOrder, // 无效的入库订单
+    InboundOrderNotFound, // 入库订单不存在
+    DuplicateInboundOrder, // 入库订单已存在
     // Database / Repository
     RepositoryFailure, // 仓库失败
     DatabaseFailure, // 数据库失败
@@ -85,6 +89,14 @@ struct AppError {
             AppErrorCategory::Validation,
             AppErrorCode::InvalidProduct,
             QStringLiteral("产品信息无效")
+        };
+    }
+    static AppError invalidInboundOrder()
+    {
+        return {
+            AppErrorCategory::Validation,
+            AppErrorCode::InvalidInboundOrder,
+            QStringLiteral("入库订单信息无效")
         };
     }
     static AppError repositoryFailure(const QString& message)

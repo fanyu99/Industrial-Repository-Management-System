@@ -2,7 +2,7 @@
 #include "IProductRepository.h"
 #include "Permission.h"
 #include "SessionManager.h"
-
+#include <QObject>
 #include <QPointer>
 #include <optional>
 

@@ -164,20 +164,17 @@ void ProductService::listProducts(
         return;
     }
     // 通过IProductRepository接口列出产品并回调
-    repository_.listProducts(filter, pageRequest, owner, [ownerPtr, this, filter, pageRequest, callback = std::move(callback)](const ProductPageResult& repoResult) mutable {
-        if (ownerPtr.isNull()) {
+    repository_.listProducts(filter, pageRequest, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const ProductPageResult& repoResult) mutable {
+        if (ownerPtr.isNull() || !callback)
             return;
-        }
         // 如果查询失败
         if (repoResult.error.has_value()) {
-            if (callback != nullptr)
-                callback(ProductPageResult { false, PageResult<ProductListItemDto> {}, repoResult.error.value() });
+            callback(ProductPageResult { false, PageResult<ProductListItemDto> {}, repoResult.error.value() });
             return;
         }
 
         // 找到产品
-        if (callback != nullptr)
-            callback(repoResult);
+        callback(repoResult);
     });
 }
 
@@ -188,57 +185,49 @@ void ProductService::createProduct(
     OperateCallback callback)
 {
     QPointer<QObject> ownerPtr(owner);
-    if (ownerPtr.isNull())
+    if (ownerPtr.isNull() || !callback)
         return;
     // 校验产品
     if (auto error = authorize(Permission::CreateProducts); error.has_value()) {
-        if (callback != nullptr)
-            callback(ProductOperationResult { false, Product {}, error });
+        callback(ProductOperationResult { false, std::nullopt, error });
         return;
     }
     if (auto error = validateCreateProduct(product); error.has_value()) {
-        if (callback != nullptr)
-            callback(ProductOperationResult { false, Product {}, error });
+        callback(ProductOperationResult { false, std::nullopt, error });
         return;
     }
     // 寻找产品编码是否已存在
-    repository_.findByCode(product.code, owner, [ownerPtr, this, product, callback](const ProductOperationResult& repoResult) mutable {
-        if (ownerPtr.isNull()) {
+    repository_.findByCode(product.code, ownerPtr.data(), [ownerPtr, product, callback, this](const ProductOperationResult& repoResult) mutable {
+        if (ownerPtr.isNull() || !callback) {
             return;
         }
         // 如果查询失败
         if (repoResult.error.has_value()) {
-            if (callback != nullptr)
-                callback(ProductOperationResult { false, Product {}, repoResult.error.value() });
+            callback(ProductOperationResult { false, std::nullopt, repoResult.error.value() });
             return;
         }
         // 如果已存在,创建失败
         if (repoResult.product.has_value()) {
-            if (callback != nullptr)
-                callback(ProductOperationResult { false, Product {}, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品已存在") } });
+            callback(ProductOperationResult { false, std::nullopt, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品已存在") } });
             return;
         }
         // 不存在,就创建新产品并回调结果
         repository_.createProduct(product, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const ProductOperationResult& repoResult) {
-            if (ownerPtr.isNull())
+            if (ownerPtr.isNull() || !callback)
                 return;
             // 如果创建失败
             if (repoResult.error.has_value()) {
-                if (callback != nullptr)
-                    callback(ProductOperationResult { false, Product {}, repoResult.error.value() });
+                callback(ProductOperationResult { false, std::nullopt, repoResult.error.value() });
                 return;
             }
             // 如果创建成功,但未返回有效数据
             if (!repoResult.product.has_value()) {
-                if (callback != nullptr)
-                    callback(
-                        ProductOperationResult { false, Product {}, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品创建后未返回有效数据") } });
+                callback(
+                    ProductOperationResult { false, std::nullopt, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品创建后未返回有效数据") } });
                 return;
             }
             // 回调创建成功
-            if (callback != nullptr) {
-                callback(ProductOperationResult { true, repoResult.product.value(), std::nullopt });
-            }
+            callback(ProductOperationResult { true, repoResult.product.value(), std::nullopt });
         });
     });
 }
@@ -254,51 +243,45 @@ void ProductService::updateProduct(
     // 校验产品
     if (auto error = authorize(Permission::EditProducts); error.has_value()) {
         if (callback != nullptr)
-            callback(ProductOperationResult { false, Product {}, error });
+            callback(ProductOperationResult { false, std::nullopt, error });
         return;
     }
     if (auto error = validateUpdateProduct(product); error.has_value()) {
         if (callback != nullptr)
-            callback(ProductOperationResult { false, Product {}, error });
+            callback(ProductOperationResult { false, std::nullopt, error });
         return;
     }
     // 查找编号是否存在对应产品
-    repository_.findByCode(product.code, owner, [ownerPtr, this, product, callback](const ProductOperationResult& repoResult) mutable {
-        if (ownerPtr.isNull()) {
+    repository_.findByCode(product.code, ownerPtr.data(), [ownerPtr, product, callback, this](const ProductOperationResult& repoResult) mutable {
+        if (ownerPtr.isNull() || !callback) {
             return;
         }
         // 如果查询失败
         if (repoResult.error.has_value()) {
-            if (callback != nullptr)
-                callback(ProductOperationResult { false, Product {}, repoResult.error.value() });
+            callback(ProductOperationResult { false, std::nullopt, repoResult.error.value() });
             return;
         }
         // 如果已存在且编码不同(不是自己)
         if (repoResult.product.has_value() && repoResult.product.value().id != product.id) {
-            if (callback != nullptr)
-                callback(ProductOperationResult { false, Product {}, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品编码已存在") } });
+                callback(ProductOperationResult { false, std::nullopt, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品编码已存在") } });
             return;
         }
         // 对应编码的产品不存在,就更新产品
         repository_.updateProduct(product, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const ProductOperationResult& repoResult) {
-            if (ownerPtr.isNull())
+            if (ownerPtr.isNull() || !callback)
                 return;
             // 如果更新失败
             if (repoResult.error.has_value()) {
-                if (callback != nullptr)
-                    callback(ProductOperationResult { false, Product {}, repoResult.error.value() });
+                callback(ProductOperationResult { false, std::nullopt, repoResult.error.value() });
                 return;
             }
             // 如果更新成功,但未返回有效数据
             if (!repoResult.product.has_value()) {
-                if (callback != nullptr)
-                    callback(ProductOperationResult { false, Product {}, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品更新后未返回有效数据") } });
+                callback(ProductOperationResult { false, std::nullopt, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品更新后未返回有效数据") } });
                 return;
             }
             // 回调更新成功
-            if (callback != nullptr) {
-                callback(ProductOperationResult { true, repoResult.product.value(), std::nullopt });
-            }
+            callback(ProductOperationResult { true, repoResult.product.value(), std::nullopt });
         });
     });
 }
@@ -326,11 +309,9 @@ void ProductService::setProductActive(
     }
     // 设置产品状态并回调结果
     repository_.setProductActive(productId, active, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const std::optional<AppError>& error) {
-        if (ownerPtr.isNull())
+        if (ownerPtr.isNull() || !callback)
             return;
-        if (callback != nullptr) {
             callback(error);
-        }
     });
 }
 // 获取当前用户
