@@ -13,10 +13,6 @@
 #include <optional>
 #include <utility>
 // 待处理请求上下文
-struct PendingRequest {
-    QPointer<QObject> owner;
-    std::function<void(const DatabaseResult&)> handler;
-};
 
 class MySqlProductRepository : public QObject, public IProductRepository {
     Q_OBJECT

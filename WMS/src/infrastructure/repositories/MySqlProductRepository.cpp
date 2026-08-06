@@ -25,13 +25,6 @@ void MySqlProductRepository::findById(
     if (ownerPtr.isNull() || !callback) {
         return;
     }
-    if (id == 0) {
-        callback(ProductOperationResult {
-            false,
-            std::nullopt,
-            AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, "产品ID无效" } });
-        return;
-    }
     // 创建查询语句
     DatabaseStatement statement;
     statement.type = StatementType::Query;
@@ -45,9 +38,16 @@ void MySqlProductRepository::findById(
     task.statements.append(statement);
     // 将callback存入到pending上下文
     // 上下文添加处理结果回调(将任务执行完成后的结果进行映射处理为产品信息,并调用另一个回调函数进行返回这个结果),最顶层的调用者就收到了ProductOperationResult结果
-    pending_.insert(task.requestId, PendingRequest { ownerPtr, [ownerPtr, callback = std::move(callback)](const DatabaseResult& result) {
+    pending_.insert(task.requestId, PendingRequest { ownerPtr, [ownerPtr, callback = std::move(callback), id](const DatabaseResult& result) {
                                                         // 校验结果
                                                         if (ownerPtr.isNull() || !callback) {
+                                                            return;
+                                                        }
+                                                        if (id == 0) {
+                                                            callback(ProductOperationResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, "产品ID无效" } });
                                                             return;
                                                         }
                                                         if (!result.isSucceeded()) {
@@ -242,7 +242,6 @@ void MySqlProductRepository::findByCode(
     if (ownerPtr.isNull() || !callback) {
         return;
     }
-
     auto normalCode = code.trimmed();
     if (normalCode.isEmpty()) {
         callback(ProductOperationResult {
@@ -254,7 +253,6 @@ void MySqlProductRepository::findByCode(
                 QStringLiteral("产品编码无效") } });
         return;
     }
-
     // 包装任务
     DatabaseStatement statement;
     statement.type = StatementType::Query;
@@ -275,6 +273,7 @@ void MySqlProductRepository::findByCode(
                 if (ownerPtr.isNull() || !callback) {
                     return;
                 }
+                
                 if (!result.isSucceeded()) {
                     callback(ProductOperationResult {
                         false,
@@ -359,11 +358,12 @@ void MySqlProductRepository::createProduct(
         task.requestId,
         PendingRequest {
             ownerPtr,
-            [this, ownerPtr, callback = std::move(callback_)](const DatabaseResult& result) {
+            [this, ownerPtr, callback = std::move(callback_), product](const DatabaseResult& result) {
                 // 校验参数
                 if (ownerPtr.isNull() || !callback) {
                     return;
                 }
+                
                 // 如果语句失败
                 if (!result.isSucceeded()) {
                     callback(ProductOperationResult {
@@ -475,6 +475,7 @@ void MySqlProductRepository::updateProduct(
                                                         if (ownerPtr.isNull() || !callback) {
                                                             return;
                                                         }
+                                                       
                                                         if (!result.isSucceeded()) {
                                                             callback(ProductOperationResult {
                                                                 false,
@@ -561,11 +562,11 @@ void MySqlProductRepository::setProductActive(
         task.requestId,
         PendingRequest {
             ownerPtr,
-            [this, ownerPtr, id, callback = std::move(callback)](const DatabaseResult& result) {
+            [this, ownerPtr,  callback = std::move(callback),id](const DatabaseResult& result) {
                 if (ownerPtr.isNull() || !callback) {
                     return;
                 }
-
+                
                 if (!result.isSucceeded()) {
                     callback(mapDatabaseErrorToAppError(result.error));
                     return;

@@ -489,11 +489,13 @@ private:
     {
         return InboundOrderListItemDto {
             order.id,
-            order.orderNo,
-            order.supplier,
-            order.status,
-            order.operatorId,
-            order.warehouseId
+                order.orderNo,
+                order.supplier,
+                order.status,
+                order.operatorId,
+                QString(),
+                order.warehouseId,
+                QString()
         };
     }
 

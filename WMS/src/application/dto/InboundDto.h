@@ -13,14 +13,26 @@ id, order_id, product_id, quantity, unit_price
 #include <QVector>
 #include <optional>
 #include "InboundOrder.h"
+#include "qdatetime.h"
 // 入库订单DTO
 struct InboundOrderListItemDto {
     quint32 id { 0 };
     QString orderNo;
     QString supplier;
     InboundOrderStatus status { InboundOrderStatus::Draft };
+
     quint32 operatorId { 0 };
+    QString operatorName;
+
     quint32 warehouseId { 0 };
+    QString warehouseName;
+
+    int lineCount { 0 }; // 订单行数量
+    int totalQuantity { 0 }; // 总数量
+
+    QDateTime createdAt;
+    QDateTime updatedAt;
+    std::optional<QDateTime> confirmedAt;
 };
 // 入库订单筛选器
 struct InboundOrderFilter {

@@ -9,7 +9,9 @@
 7.DatabaseTask 数据库任务
 8.DatabaseError 数据库错误
 9.StatementResult 语句结果
-10.DatabaseResult 数据库结果
+10.DatabaseResultStatus 数据库结果状态
+11.DatabaseResult 数据库结果
+12.PendingRequest 待处理请求上下文
 */
 #pragma once
 
@@ -21,6 +23,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtCore/QList>
+#include <QPointer>
 #include <optional>
 // 1.语句类型
 enum class StatementType {
@@ -203,7 +206,7 @@ struct StatementResult {
     QStringList columns; // 列名
     QList<QVariantList> rows; // 行数据
     qint64 affectedRows { 0 }; // 真实影响的行数(用于affctedRows守卫)
-    QVariant lastInsertId; // 最后插入 ID
+    QVariant lastInsertId; // 最后插入的ID
 };
 // 10. 数据库事务执行结果的状态
 enum class DatabaseResultStatus {
@@ -243,7 +246,11 @@ struct DatabaseResult { // 注意:表示已经尝试执行并获得数据库的�
             status == DatabaseResultStatus::SqlExecutionFailed;
     }
 };
-
+// 12. 待处理请求上下文
+struct PendingRequest {
+    QPointer<QObject> owner;
+    std::function<void(const DatabaseResult&)>handler;
+};
 // 注册元类型,用于信号槽传递等
 // 只要自定义的类型会经过跨线程的信号槽,就要注册元类型
 Q_DECLARE_METATYPE(StatementType)
@@ -256,3 +263,4 @@ Q_DECLARE_METATYPE(DatabaseTask)
 Q_DECLARE_METATYPE(DatabaseError)
 Q_DECLARE_METATYPE(StatementResult)
 Q_DECLARE_METATYPE(DatabaseResult)
+Q_DECLARE_METATYPE(PendingRequest)
