@@ -1,8 +1,9 @@
 #include "MySqlInboundRepository.h"
+#include "MySqlAuditLogRepository.h"
 #include <QUuid>
 #include <QVariantMap>
 int MySqlInboundRepository::headerColumns = 10;
-int MySqlInboundRepository::linesColumns = 5; 
+int MySqlInboundRepository::linesColumns = 5;
 MySqlInboundRepository::MySqlInboundRepository(
     DatabaseExecutor& executor,
     QObject* parent)
@@ -13,8 +14,37 @@ MySqlInboundRepository::MySqlInboundRepository(
     connect(&executor_, &DatabaseExecutor::taskFinished, this, &MySqlInboundRepository::onTaskFinished);
 }
 // 映射数据库错误到应用错误
-AppError MySqlInboundRepository::mapDatabaseErrorToAppError(const DatabaseError& error)
+AppError MySqlInboundRepository::mapDatabaseErrorToAppError(
+    const DatabaseError& error,
+    const QString& operationContext,
+    int failedStatementIndex)
 {
+    // 有具体操作上下文时,进行精确错误映射
+    if (!operationContext.isEmpty() && failedStatementIndex >= 0) {
+        // confirmOrder: 确认订单
+        if (operationContext == QStringLiteral("confirmOrder")) {
+            // 语句4: INSERT INTO stock_movements (movement_no 唯一键冲突)
+            if (failedStatementIndex == 3 && error.nativeErrorCode == QStringLiteral("1062")) {
+                return AppError::databaseFailure(QStringLiteral("库存流水编号冲突，请重试"));
+            }
+            if (failedStatementIndex == 1 && error.code == DatabaseErrorCode::None) {
+                return AppError{
+                    AppErrorCategory::Validation,
+                        AppErrorCode::InvalidInput,
+                        QStringLiteral("确认订单失败,订单不存在或状态不是草稿")
+                };
+            }
+        }
+        // createDraft: 创建草稿订单
+        if (operationContext == QStringLiteral("createDraft")) {
+            // 语句2: INSERT INTO inbound_orders (order_no 唯一键冲突)
+            if (failedStatementIndex == 2 && error.nativeErrorCode == QStringLiteral("1062")) {
+                return AppError::databaseFailure(QStringLiteral("订单编号冲突，请重试"));
+            }
+        }
+    }
+
+    // 通用错误码映射
     switch (error.code) {
     case DatabaseErrorCode::QueueFull:
         return AppError::repositoryFailure(QStringLiteral("数据库任务队列已满,请稍后重试"));
@@ -30,12 +60,8 @@ AppError MySqlInboundRepository::mapDatabaseErrorToAppError(const DatabaseError&
     case DatabaseErrorCode::ExecuteFailed:
     case DatabaseErrorCode::TransactionFailed: {
         if (error.nativeErrorCode == "1062")
-            return AppError {
-                AppErrorCategory::Database,
-                AppErrorCode::DuplicateInboundOrder,
-                QStringLiteral("入库订单号已存在")
-            };
-        return AppError::databaseFailure(QStringLiteral("数据库操作失败"));
+            return AppError::databaseFailure(QStringLiteral("目标已存在:%1").arg(error.databaseText));
+        return AppError::databaseFailure(QStringLiteral("数据库操作失败:%1").arg(error.databaseText));
     }
     case DatabaseErrorCode::Cancelled:
         return AppError::databaseFailure(QStringLiteral("操作已取消"));
@@ -161,7 +187,7 @@ void MySqlInboundRepository::findById(
 
     // 包装lambda回调函数处理查询结果
     // 提交任务到执行器
-    pending_.insert(task.requestId, PendingRequest { ownerPtr, [ownerPtr, callback = std::move(callback), this,id](const DatabaseResult& result) {
+    pending_.insert(task.requestId, PendingRequest { ownerPtr, [ownerPtr, callback = std::move(callback), this, id](const DatabaseResult& result) {
                                                         // 校验参数
                                                         if (ownerPtr.isNull() || !callback)
                                                             return;
@@ -613,6 +639,7 @@ void MySqlInboundRepository::listOrders(
 // 创建草稿订单(注意:需要生成有效的OrderNo和订单ID)
 void MySqlInboundRepository::createDraft(
     const InboundOrder& order,
+    const AuditContext& auditContext,
     QObject* owner,
     OperateCallback callback)
 {
@@ -628,13 +655,27 @@ void MySqlInboundRepository::createDraft(
                 AppError::repositoryFailure(QStringLiteral("创建草稿订单失败,订单参数错误")) });
         return;
     }
+    // 生成订单号: INB-YYYYMMDD-NNNNNN 日期+序号
+    const QString prefix = QStringLiteral("INB-%1-").arg(
+        QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd")));
+    // 日期中最大订单序号+1,作为新订单的序号
+    DatabaseStatement statement_seq;
+    statement_seq.type = StatementType::Command;
+    statement_seq.sql = QStringLiteral(
+        "SET @seq = (SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(order_no, '-', -1) AS UNSIGNED)), 0) + 1 "
+        "FROM inbound_orders WHERE order_no LIKE :prefixPattern)");
+    statement_seq.parameters.insert("prefixPattern", prefix + QStringLiteral("%"));
+    // 生成并设置订单号
+    DatabaseStatement statement_orderno;
+    statement_orderno.type = StatementType::Command;
+    statement_orderno.sql = QStringLiteral(
+        "SET @gen_order_no = CONCAT(:prefix, LPAD(@seq, 6, '0'))");
+    statement_orderno.parameters.insert("prefix", prefix);
+
     // 创建插入inbound_orders表语句
     DatabaseStatement statement1;
     statement1.type = StatementType::Command;
-    const QUuid orderNo = QUuid::createUuid();
-    const QString orderNoStr = orderNo.toString(QUuid::WithoutBraces);
-    statement1.sql = QStringLiteral("INSERT INTO inbound_orders(order_no,supplier,status,operator_id,warehouse_id,remark) VALUES(:orderNo,:supplier,:status,:operatorId,:warehouseId,:remark)");
-    statement1.parameters.insert("orderNo", orderNoStr);
+    statement1.sql = QStringLiteral("INSERT INTO inbound_orders(order_no,supplier,status,operator_id,warehouse_id,remark) VALUES(@gen_order_no,:supplier,:status,:operatorId,:warehouseId,:remark)");
     statement1.parameters.insert("supplier", order.supplier);
     statement1.parameters.insert("status", QStringLiteral("draft"));
     statement1.parameters.insert("operatorId", order.operatorId);
@@ -644,12 +685,20 @@ void MySqlInboundRepository::createDraft(
     DatabaseStatement statement2;
     statement2.type = StatementType::Command;
     statement2.sql = QStringLiteral("SET @new_order_id = LAST_INSERT_ID();");
+
+    // 获取生成的订单号
+    DatabaseStatement statement_generated;
+    statement_generated.type = StatementType::Query;
+    statement_generated.sql = QStringLiteral("SELECT @gen_order_no AS generatedOrderNo");
     // 创建事务型任务
     DatabaseTask task;
     task.type = DatabaseTaskType::Transaction;
     task.requestId = QUuid::createUuid();
+    task.statements.append(statement_seq);
+    task.statements.append(statement_orderno);
     task.statements.append(statement1);
     task.statements.append(statement2);
+    task.statements.append(statement_generated);
     // 插入inbound_details表语句
     for (const auto& line : order.lines) {
         DatabaseStatement lineStatement;
@@ -668,39 +717,54 @@ void MySqlInboundRepository::createDraft(
         }
         task.statements.append(lineStatement);
     }
+    // 审计日志写入语句
+    DatabaseStatement statementAudit;
+    statementAudit.type = StatementType::Command;
+    statementAudit.sql = QStringLiteral(
+        "INSERT INTO audit_logs "
+        "(operator_id, username, action, target_type, target_id, detail, created_at) "
+        "SELECT :operatorId, u.username, 'create', 'inbound', CAST(@new_order_id AS CHAR), "
+        "JSON_OBJECT('module', 'inbound', 'orderNo', @gen_order_no, 'supplier', :supplier, 'warehouseId', :warehouseId, 'action', 'create'), "
+        "CURRENT_TIMESTAMP(3) "
+        "FROM users u "
+        "WHERE u.id = :operatorId");
+    statementAudit.parameters.insert("operatorId", auditContext.operatorId);
+    statementAudit.parameters.insert("supplier", order.supplier);
+    statementAudit.parameters.insert("warehouseId", order.warehouseId);
+    task.statements.append(statementAudit);
     // 包装lambda函数
-    pending_.insert(task.requestId, PendingRequest { ownerPtr, [ownerPtr, callback = std::move(callback), orderNoStr, order, this, task](const DatabaseResult& result) {
+    pending_.insert(task.requestId, PendingRequest { ownerPtr, [ownerPtr, callback = std::move(callback), order, this, task](const DatabaseResult& result) {
                                                         if (ownerPtr.isNull() || !callback)
                                                             return;
                                                         if (!result.isSucceeded()) {
                                                             callback(InboundOperationResult {
                                                                 false,
-                                                                std::nullopt, mapDatabaseErrorToAppError(result.error) });
+                                                                std::nullopt, mapDatabaseErrorToAppError(result.error, QStringLiteral("createDraft"), result.failedStatementIndex) });
                                                             return;
                                                         }
                                                         // 校验结果
-                                                        if (result.statementResults.size() != 2 + order.lines.size()) {
+                                                        if (result.statementResults.size() != 6 + order.lines.size()) {
                                                             callback(InboundOperationResult {
                                                                 false,
                                                                 std::nullopt,
                                                                 AppError::repositoryFailure(QStringLiteral("创建草稿订单失败,订单创建结果数量错误")) });
                                                             return;
                                                         }
-                                                        if (result.statementResults[0].lastInsertId.toInt() == 0) {
+                                                        if (result.statementResults[2].lastInsertId.toInt() == 0) {
                                                             callback(InboundOperationResult {
                                                                 false,
                                                                 std::nullopt,
                                                                 AppError::repositoryFailure(QStringLiteral("创建草稿订单失败,订单ID异常")) });
                                                             return;
                                                         }
-                                                        if (result.statementResults[0].affectedRows != 1) {
+                                                        if (result.statementResults[2].affectedRows != 1) {
                                                             callback(InboundOperationResult {
                                                                 false,
                                                                 std::nullopt,
                                                                 AppError::repositoryFailure(QStringLiteral("创建草稿订单失败,订单ID插入失败")) });
                                                             return;
                                                         }
-                                                        for (int i = 2; i < result.statementResults.size(); ++i) {
+                                                        for (int i = 5; i < result.statementResults.size() - 1; ++i) {
                                                             const auto& lineResult = result.statementResults[i];
                                                             if (lineResult.affectedRows != 1) {
                                                                 callback(InboundOperationResult {
@@ -709,6 +773,27 @@ void MySqlInboundRepository::createDraft(
                                                                     AppError::repositoryFailure(QStringLiteral("创建草稿订单失败,订单行插入失败")) });
                                                                 return;
                                                             }
+                                                        }
+                                                        // 校验审计日志写入
+                                                        const auto& auditResult = result.statementResults.last();
+                                                        if (auditResult.affectedRows != 1) {
+                                                            callback(InboundOperationResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError::repositoryFailure(QStringLiteral("创建草稿订单失败,审计日志写入异常")) });
+                                                            return;
+                                                        }
+                                                        // 从SELECT结果中读取生成的订单号
+                                                        const auto& genResult = result.statementResults[4];
+                                                        const QString orderNoStr = (genResult.rows.size() == 1 && genResult.rows[0].length() >= 1)
+                                                            ? genResult.rows[0].value(0).toString()
+                                                            : QString();
+                                                        if (orderNoStr.isEmpty()) {
+                                                            callback(InboundOperationResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError::repositoryFailure(QStringLiteral("创建草稿订单失败,无法获取生成的订单号/订单号为空")) });
+                                                            return;
                                                         }
                                                         // 回查订单
                                                         findByOrderNo(orderNoStr, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const InboundOperationResult& result) {
@@ -766,10 +851,13 @@ void MySqlInboundRepository::createDraft(
     executor_.submitTask(task);
 }
 // 确认订单
-// TODO: 确认订单中,还需要对数据库stock_balance,stock_movements,audit_logs进行更新(创建事务型任务进行处理)
+// 1. 将订单状态更新为确认状态
+// 2. 更新库存余额
+// 3. 更新库存移动记录
+// 4. 更新审计日志
 void MySqlInboundRepository::confirmOrder(
     quint32 id,
-    quint32 operatorId,
+    const AuditContext& auditContext,
     QObject* owner,
     OperateCallback callback)
 {
@@ -784,7 +872,7 @@ void MySqlInboundRepository::confirmOrder(
             AppError::repositoryFailure(QStringLiteral("确认订单失败,订单ID无效")) });
         return;
     }
-    if (operatorId == 0) {
+    if (auditContext.operatorId == 0) {
         callback(InboundOperationResult {
             false,
             std::nullopt,
@@ -792,54 +880,155 @@ void MySqlInboundRepository::confirmOrder(
         return;
     }
 
-    // 1.先创建UPDATE任务:将草稿状态更新为确认状态
-    DatabaseStatement statement;
-    statement.type = StatementType::Command;
-    statement.sql = QStringLiteral(
+    // 1.创建更新订单状态语句
+    DatabaseStatement statement1;
+    statement1.type = StatementType::Command;
+    statement1.expectedAffectedRows = 1; // 设置期望,如果更新失败直接回滚
+    statement1.sql = QStringLiteral(
         "UPDATE inbound_orders "
         "SET status = 'confirmed', "
         "    operator_id = :operatorId, "
         "    confirmed_at = NOW(3) "
         "WHERE id = :id "
         "  AND status = 'draft'");
-    statement.parameters.insert("id", id);
-    statement.parameters.insert("operatorId", operatorId);
+    statement1.parameters.insert("id", id);
+    statement1.parameters.insert("operatorId", auditContext.operatorId);
 
+    // 2.创建更新库存余额语句
+    DatabaseStatement statement2;
+    statement2.type = StatementType::Command;
+    statement2.sql = QStringLiteral(
+        "INSERT INTO stock_balance (product_id, warehouse_id, quantity) "
+        "SELECT i.product_id, o.warehouse_id, SUM(i.quantity) "
+        "FROM inbound_details i "
+        "JOIN inbound_orders o ON o.id = i.order_id "
+        "WHERE o.id = :id "
+        "GROUP BY i.product_id, o.warehouse_id "
+        "ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity), updated_at = NOW(3)");
+    statement2.parameters.insert("id", id);
+
+    // 3.生成流水号: MOV-YYYYMMDD-NNNNNN (日期+当日序号)
+    const QString prefix = QStringLiteral("MOV-%1-").arg(
+        QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd")));
+
+    DatabaseStatement statement_seq; // 获取当前最大序号,movement_no序号每次递增
+    statement_seq.type = StatementType::Command;
+    statement_seq.sql = QStringLiteral(
+        "SET @seq = (SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(movement_no, '-', -1) AS UNSIGNED)), 0) "
+        "FROM stock_movements WHERE movement_no LIKE :prefixPattern)");
+    statement_seq.parameters.insert("prefixPattern", prefix + QStringLiteral("%"));
+
+    // 4.创建更新库存流水记录语句
+    DatabaseStatement statement3;
+    statement3.type = StatementType::Command;
+    statement3.sql = QStringLiteral(
+        "INSERT INTO stock_movements "
+        "(movement_no, product_id, warehouse_id, movement_type, quantity_delta, "
+        " source_type, source_id, source_line_id, movement_role, operator_id, reason, created_at) "
+        "SELECT CONCAT(:prefix, LPAD(@seq+ROW_NUMBER() OVER(ORDER BY i.id), 6, '0')) AS movement_no, i.product_id, o.warehouse_id, 'inbound', i.quantity, "
+        "       'inbound', :id, i.id, 'normal', :operatorId, '入库确认', NOW(3) "
+        "FROM inbound_details i "
+        "JOIN inbound_orders o ON o.id = i.order_id "
+        "WHERE o.id = :id");
+    statement3.parameters.insert("operatorId", auditContext.operatorId);
+    statement3.parameters.insert("id", id);
+    statement3.parameters.insert("prefix", prefix);
+
+    // 5.创建审计日志写入语句
+    DatabaseStatement statement4;
+    statement4.type = StatementType::Command;
+    statement4.expectedAffectedRows = 1; // 如果写入失败直接回滚
+    statement4.sql = QStringLiteral(
+        "INSERT INTO audit_logs "
+        "(operator_id,username,action,target_type,target_id,detail,created_at) "
+        "SELECT :operatorId,u.username,'confirm' ,'inbound',:targetId, "
+        "JSON_OBJECT("
+        "'module','inbound',"
+        "'operatorId',:operatorId,"
+        "'userName',u.username,"
+        "'orderNo',o.order_no,"
+        "'orderId',o.id,"
+        "'action','confirm',"
+        "'fromStatus','draft',"
+        "'toStatus','confirmed',"
+        "'warehouseId',o.warehouse_id),"
+        "CURRENT_TIMESTAMP(3) "
+        "FROM users u "
+        "JOIN inbound_orders o ON o.id =:targetId "
+        "WHERE u.id = :operatorId");
+    statement4.parameters.insert("operatorId", auditContext.operatorId);
+    statement4.parameters.insert("targetId", id);
+
+    // 合并为事务任务
     DatabaseTask task;
-    task.type = DatabaseTaskType::Single;
-    task.statements.append(statement);
+    task.type = DatabaseTaskType::Transaction;
     task.requestId = QUuid::createUuid();
+    task.statements.append(statement_seq);
+    task.statements.append(statement1);
+    task.statements.append(statement2);
+    task.statements.append(statement3);
+    task.statements.append(statement4);
 
-    // 2.提交UPDATE任务,在回调中进行查找和状态校验
-    pending_.insert(task.requestId, PendingRequest { ownerPtr, [this, id, operatorId, ownerPtr, callback = std::move(callback)](const DatabaseResult& result) {
+    // 提交任务,在回调中校验结果
+    pending_.insert(task.requestId, PendingRequest { ownerPtr, [this, id, ownerPtr, callback = std::move(callback)](const DatabaseResult& result) {
                                                         if (ownerPtr.isNull() || !callback)
                                                             return;
 
-                                                        // UPDATE执行失败
+                                                        // 事务执行失败
                                                         if (!result.isSucceeded()) {
                                                             callback(InboundOperationResult {
                                                                 false,
                                                                 std::nullopt,
-                                                                mapDatabaseErrorToAppError(result.error) });
+                                                                mapDatabaseErrorToAppError(result.error, QStringLiteral("confirmOrder"), result.failedStatementIndex) });
                                                             return;
                                                         }
-                                                        if (result.statementResults.size() != 1) {
+                                                        if (result.statementResults.size() != 5) {
                                                             callback(InboundOperationResult {
                                                                 false,
                                                                 std::nullopt,
-                                                                AppError::repositoryFailure(QStringLiteral("确认订单失败,订单确认结果异常")) });
+                                                                AppError::repositoryFailure(QStringLiteral("确认订单失败,事务结果数量异常")) });
                                                             return;
                                                         }
 
-                                                        const auto& statementResult = result.statementResults.constFirst();
-                                                        const qint64 affectedRows = statementResult.affectedRows;
+                                                        // 校验 statement1: 更新订单状态
+                                                        const auto& result1 = result.statementResults[1];
+                                                        const qint64 affectedRows = result1.affectedRows;
 
-                                                        // 3.UPDATE回调中调用findById查询最新订单状态
+                                                        // 校验 statement2: 更新库存余额
+                                                        const auto& result2 = result.statementResults[2];
+                                                        if (result2.affectedRows < 1) {
+                                                            callback(InboundOperationResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError::repositoryFailure(QStringLiteral("确认订单失败,更新库存余额影响行数异常")) });
+                                                            return;
+                                                        }
+
+                                                        // 校验 statement3: 写入库存流水
+                                                        const auto& result3 = result.statementResults[3];
+                                                        if (result3.affectedRows < 1) {
+                                                            callback(InboundOperationResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError::repositoryFailure(QStringLiteral("确认订单失败,写入库存流水影响行数异常")) });
+                                                            return;
+                                                        }
+
+                                                        // 校验 statement4: 写入审计日志
+                                                        const auto& result4 = result.statementResults[4];
+                                                        if (result4.affectedRows != 1) {
+                                                            callback(InboundOperationResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError::repositoryFailure(QStringLiteral("确认订单失败,写入审计日志影响行数异常")) });
+                                                            return;
+                                                        }
+
+                                                        // 调用 findById 查询最新订单状态进行最终校验
                                                         findById(id, ownerPtr.data(), [affectedRows, ownerPtr, callback](const InboundOperationResult& opResult) {
                                                             if (ownerPtr.isNull() || !callback)
                                                                 return;
 
-                                                            // findById查询失败
                                                             if (!opResult.success) {
                                                                 callback(InboundOperationResult {
                                                                     false,
@@ -865,7 +1054,6 @@ void MySqlInboundRepository::confirmOrder(
                                                                 return;
                                                             }
 
-                                                            // 4.校验订单状态
                                                             const auto& order = opResult.order.value();
 
                                                             // 订单已取消
@@ -880,30 +1068,26 @@ void MySqlInboundRepository::confirmOrder(
                                                             // 订单已确认
                                                             if (order.status == InboundOrderStatus::Confirmed) {
                                                                 if (affectedRows == 1) {
-                                                                    // 影响了1行,说明是本次确认的,返回成功
                                                                     callback(InboundOperationResult {
                                                                         true,
                                                                         order,
                                                                         std::nullopt });
                                                                 } else {
-                                                                    // 影响了0行,订单Confirmed,之前就已经确认了
                                                                     callback(InboundOperationResult {
                                                                         false,
                                                                         std::nullopt,
                                                                         AppError::repositoryFailure(QStringLiteral("确认订单失败,订单已确认")) });
                                                                 }
                                                                 return;
-                                                            } else {
-                                                                // 如果是草稿状态,说明确认失败
-                                                                callback(InboundOperationResult {
-                                                                    false,
-                                                                    std::nullopt,
-                                                                    AppError::repositoryFailure(QStringLiteral("确认订单失败,订单状态异常")) });
-                                                                return;
                                                             }
+
+                                                            // 订单仍为草稿: 确认失败
+                                                            callback(InboundOperationResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError::repositoryFailure(QStringLiteral("确认订单失败,订单状态异常")) });
                                                         });
                                                     } });
 
-    // 最后提交任务
     executor_.submitTask(task);
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "AuditContext.h"
 #include "IInboundRepository.h"
 #include "InboundRequests.h"
 #include "Permission.h"
@@ -23,14 +24,16 @@ public:
     using PageCallback = IInboundRepository::PageCallback;
     // 获取当前的用户
     std::optional<AuthenticatedUser> currentUser() const noexcept;
+    // 构建审计上下文
+    [[nodiscard]] AuditContext buildAuditContext() const noexcept;
     // 检查是否有指定权限
     [[nodiscard]] bool hasPermission(Permission permission) const noexcept;
     // 校验是否有权限
     [[nodiscard]] std::optional<AppError> authorize(Permission permission) const noexcept;
     // 校验订单是否合法(用于创建订单之后)
-    [[nodiscard]]static  std::optional<AppError> validateCreateInboundOrder(const InboundOrder& order)  noexcept;
+    [[nodiscard]] static std::optional<AppError> validateCreateInboundOrder(const InboundOrder& order) noexcept;
     // 校验确认订单是否合法(用于确认订单之后)
-    [[nodiscard]]static std::optional<AppError> validateConfirmInboundOrder(const InboundOrder& order)  noexcept;
+    [[nodiscard]] static std::optional<AppError> validateConfirmInboundOrder(const InboundOrder& order) noexcept;
     // 校验分页请求是否合法
     [[nodiscard]] std::optional<AppError> validatePageRequest(const PageRequest& request) const noexcept;
     // 校验创建入库订单请求是否合法

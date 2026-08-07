@@ -323,6 +323,7 @@ public:
 
     void createProduct(
         const Product& product,
+        const AuditContext& /* auditContext */,
         QObject* owner,
         OperateCallback callback) override
     {
@@ -360,6 +361,7 @@ public:
 
     void updateProduct(
         const Product& product,
+        const AuditContext& /* auditContext */,
         QObject* owner,
         OperateCallback callback) override
     {
@@ -404,6 +406,7 @@ public:
     void setProductActive(
         quint32 id,
         bool active,
+        const AuditContext& /* auditContext */,
         QObject* owner,
         ActiveCallback callback) override
     {

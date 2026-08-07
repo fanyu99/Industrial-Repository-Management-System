@@ -1,4 +1,5 @@
 #include "MySqlProductRepository.h"
+#include "MySqlAuditLogRepository.h"
 // TODO: createProduct等
 MySqlProductRepository::MySqlProductRepository(
     DatabaseExecutor& executor,
@@ -273,7 +274,7 @@ void MySqlProductRepository::findByCode(
                 if (ownerPtr.isNull() || !callback) {
                     return;
                 }
-                
+
                 if (!result.isSucceeded()) {
                     callback(ProductOperationResult {
                         false,
@@ -318,6 +319,7 @@ void MySqlProductRepository::findByCode(
 //  创建产品
 void MySqlProductRepository::createProduct(
     const Product& product,
+    const AuditContext& auditContext,
     QObject* owner,
     OperateCallback callback_)
 {
@@ -337,7 +339,7 @@ void MySqlProductRepository::createProduct(
                     QStringLiteral("产品信息无效") } });
         return;
     }
-    // 创建语句
+    // 创建产品插入语句
     DatabaseStatement statement;
     statement.type = StatementType::Command;
     statement.sql = QStringLiteral("INSERT INTO products(code, name, category_id, unit_id, specification, safety_stock, is_active) VALUES (:code, :name, :category_id, :unit_id, :specification, :safety_stock, :is_active)");
@@ -348,11 +350,34 @@ void MySqlProductRepository::createProduct(
     statement.parameters.insert("specification", product.specification);
     statement.parameters.insert("safety_stock", product.safetyStock);
     statement.parameters.insert("is_active", product.active);
-    // 包装任务
+
+    // 保存新插入的产品ID
+    DatabaseStatement statementSaveId;
+    statementSaveId.type = StatementType::Command;
+    statementSaveId.sql = QStringLiteral("SET @new_product_id = LAST_INSERT_ID()");
+
+    // 审计日志写入语句
+    DatabaseStatement statementAudit;
+    statementAudit.type = StatementType::Command;
+    statementAudit.sql = QStringLiteral(
+        "INSERT INTO audit_logs "
+        "(operator_id, username, action, target_type, target_id, detail, created_at) "
+        "SELECT :operatorId, u.username, 'create', 'product', CAST(@new_product_id AS CHAR), "
+        "JSON_OBJECT('module', 'product', 'code', :code, 'name', :name, 'action', 'create'), "
+        "CURRENT_TIMESTAMP(3) "
+        "FROM users u "
+        "WHERE u.id = :operatorId");
+    statementAudit.parameters.insert("operatorId", auditContext.operatorId);
+    statementAudit.parameters.insert("code", product.code);
+    statementAudit.parameters.insert("name", product.name);
+
+    // 包装事务型任务
     DatabaseTask task;
     task.requestId = QUuid::createUuid();
-    task.type = DatabaseTaskType::Single;
+    task.type = DatabaseTaskType::Transaction;
     task.statements.append(statement);
+    task.statements.append(statementSaveId);
+    task.statements.append(statementAudit);
     // 添加异步任务到队列
     pending_.insert(
         task.requestId,
@@ -363,7 +388,7 @@ void MySqlProductRepository::createProduct(
                 if (ownerPtr.isNull() || !callback) {
                     return;
                 }
-                
+
                 // 如果语句失败
                 if (!result.isSucceeded()) {
                     callback(ProductOperationResult {
@@ -372,17 +397,17 @@ void MySqlProductRepository::createProduct(
                         mapDatabaseErrorToAppError(result.error) });
                     return;
                 }
-                // 如果语句成功,但没有结果,创建失败
-                if (result.statementResults.isEmpty()) {
+                // 校验语句数量
+                if (result.statementResults.size() != 3) {
                     callback(ProductOperationResult {
                         false,
                         std::nullopt,
-                        AppError::repositoryFailure(QStringLiteral("数据库插入结果为空,创建失败")) });
+                        AppError::repositoryFailure(QStringLiteral("创建产品事务结果数量异常")) });
                     return;
                 }
 
-                const auto& insertResult = result.statementResults.constFirst();
-                // 如果影响行数异常,创建失败
+                // 校验产品插入
+                const auto& insertResult = result.statementResults[0];
                 if (insertResult.affectedRows != 1) {
                     callback(ProductOperationResult {
                         false,
@@ -390,7 +415,6 @@ void MySqlProductRepository::createProduct(
                         AppError::repositoryFailure(QStringLiteral("数据库产品创建影响行数异常")) });
                     return;
                 }
-                // 如果插入ID异常,创建失败
                 const auto lastInsertId = insertResult.lastInsertId.toUInt();
                 if (lastInsertId == 0) {
                     callback(ProductOperationResult {
@@ -399,6 +423,17 @@ void MySqlProductRepository::createProduct(
                         AppError::repositoryFailure(QStringLiteral("数据库产品创建失败")) });
                     return;
                 }
+
+                // 校验审计日志写入
+                const auto& auditResult = result.statementResults[2];
+                if (auditResult.affectedRows != 1) {
+                    callback(ProductOperationResult {
+                        false,
+                        std::nullopt,
+                        AppError::repositoryFailure(QStringLiteral("创建产品审计日志写入异常")) });
+                    return;
+                }
+
                 // 通过查找ID,获取产品信息并回调至创建成功回调函数
                 findById(
                     lastInsertId,
@@ -434,6 +469,7 @@ void MySqlProductRepository::createProduct(
 // 更新产品
 void MySqlProductRepository::updateProduct(
     const Product& product,
+    const AuditContext& auditContext,
     QObject* owner,
     OperateCallback callback_)
 {
@@ -452,7 +488,7 @@ void MySqlProductRepository::updateProduct(
                     QStringLiteral("产品信息无效") } });
         return;
     }
-    // 创建语句
+    // 创建更新语句
     DatabaseStatement statement;
     statement.type = StatementType::Command;
     statement.sql = QStringLiteral("UPDATE products SET name = :name,category_id = :category_id,code = :code, unit_id = :unit_id, specification = :specification, safety_stock = :safety_stock, is_active = :is_active WHERE id = :id");
@@ -464,18 +500,36 @@ void MySqlProductRepository::updateProduct(
     statement.parameters.insert("specification", product.specification);
     statement.parameters.insert("safety_stock", product.safetyStock);
     statement.parameters.insert("is_active", product.active);
-    // 包装任务
+
+    // 审计日志写入语句
+    DatabaseStatement statementAudit;
+    statementAudit.type = StatementType::Command;
+    statementAudit.sql = QStringLiteral(
+        "INSERT INTO audit_logs "
+        "(operator_id, username, action, target_type, target_id, detail, created_at) "
+        "SELECT :operatorId, u.username, 'update', 'product', CAST(:targetId AS CHAR), "
+        "JSON_OBJECT('module', 'product', 'code', :code, 'name', :name, 'action', 'update'), "
+        "CURRENT_TIMESTAMP(3) "
+        "FROM users u "
+        "WHERE u.id = :operatorId");
+    statementAudit.parameters.insert("operatorId", auditContext.operatorId);
+    statementAudit.parameters.insert("targetId", product.id);
+    statementAudit.parameters.insert("code", product.code);
+    statementAudit.parameters.insert("name", product.name);
+
+    // 包装事务型任务
     DatabaseTask task;
     task.requestId = QUuid::createUuid();
-    task.type = DatabaseTaskType::Single;
+    task.type = DatabaseTaskType::Transaction;
     task.statements.append(statement);
+    task.statements.append(statementAudit);
     // 加入异步回调函数到pending_中
     pending_.insert(task.requestId, PendingRequest { ownerPtr, [this, ownerPtr, callback = std::move(callback_), product](const DatabaseResult& result) {
                                                         // 校验参数
                                                         if (ownerPtr.isNull() || !callback) {
                                                             return;
                                                         }
-                                                       
+
                                                         if (!result.isSucceeded()) {
                                                             callback(ProductOperationResult {
                                                                 false,
@@ -483,15 +537,16 @@ void MySqlProductRepository::updateProduct(
                                                                 mapDatabaseErrorToAppError(result.error) });
                                                             return;
                                                         }
-                                                        if (result.statementResults.isEmpty()) {
+                                                        if (result.statementResults.size() != 2) {
                                                             callback(ProductOperationResult {
                                                                 false,
                                                                 std::nullopt,
-                                                                AppError::repositoryFailure(QStringLiteral("数据库产品更新影响行数异常")) });
+                                                                AppError::repositoryFailure(QStringLiteral("更新产品事务结果数量异常")) });
                                                             return;
                                                         }
+
+                                                        // 校验产品更新
                                                         const auto& updateResult = result.statementResults[0];
-                                                        // 如果影响行数异常,更新失败
                                                         if (updateResult.affectedRows > 1) {
                                                             callback(
                                                                 ProductOperationResult {
@@ -500,6 +555,17 @@ void MySqlProductRepository::updateProduct(
                                                                     AppError::repositoryFailure(QStringLiteral("数据库产品更新影响行数异常")) });
                                                             return;
                                                         }
+
+                                                        // 校验审计日志写入
+                                                        const auto& auditResult = result.statementResults[1];
+                                                        if (auditResult.affectedRows != 1) {
+                                                            callback(ProductOperationResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError::repositoryFailure(QStringLiteral("更新产品审计日志写入异常")) });
+                                                            return;
+                                                        }
+
                                                         findById(product.id, ownerPtr.data(), [callback = std::move(callback), ownerPtr](const ProductOperationResult& findResult) {
                                                             if (ownerPtr.isNull() || !callback) {
                                                                 return;
@@ -535,6 +601,7 @@ void MySqlProductRepository::updateProduct(
 void MySqlProductRepository::setProductActive(
     quint32 id,
     bool active,
+    const AuditContext& auditContext,
     QObject* owner,
     ActiveCallback callback)
 {
@@ -546,41 +613,65 @@ void MySqlProductRepository::setProductActive(
         callback(AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品id无效") });
         return;
     }
-    // 创建语句
+    // 创建更新语句
     DatabaseStatement statement;
     statement.type = StatementType::Command;
     statement.sql = QStringLiteral("UPDATE products SET is_active = :is_active WHERE id = :id");
     statement.parameters.insert("id", id);
     statement.parameters.insert("is_active", active);
-    // 包装任务
+
+    // 审计日志写入语句
+    DatabaseStatement statementAudit;
+    statementAudit.type = StatementType::Command;
+    statementAudit.sql = QStringLiteral(
+        "INSERT INTO audit_logs "
+        "(operator_id, username, action, target_type, target_id, detail, created_at) "
+        "SELECT :operatorId, u.username, 'set_active', 'product', CAST(:targetId AS CHAR), "
+        "JSON_OBJECT('module', 'product', 'active', :active, 'action', 'set_active'), "
+        "CURRENT_TIMESTAMP(3) "
+        "FROM users u "
+        "WHERE u.id = :operatorId");
+    statementAudit.parameters.insert("operatorId", auditContext.operatorId);
+    statementAudit.parameters.insert("targetId", id);
+    statementAudit.parameters.insert("active", active);
+
+    // 包装事务型任务
     DatabaseTask task;
     task.requestId = QUuid::createUuid();
-    task.type = DatabaseTaskType::Single;
+    task.type = DatabaseTaskType::Transaction;
     task.statements.append(statement);
+    task.statements.append(statementAudit);
     // 添加到pending_
     pending_.insert(
         task.requestId,
         PendingRequest {
             ownerPtr,
-            [this, ownerPtr,  callback = std::move(callback),id](const DatabaseResult& result) {
+            [this, ownerPtr, callback = std::move(callback), id](const DatabaseResult& result) {
                 if (ownerPtr.isNull() || !callback) {
                     return;
                 }
-                
+
                 if (!result.isSucceeded()) {
                     callback(mapDatabaseErrorToAppError(result.error));
                     return;
                 }
 
-                if (result.statementResults.isEmpty()) {
-                    callback(AppError::repositoryFailure(QStringLiteral("数据库产品状态更新结果为空")));
+                if (result.statementResults.size() != 2) {
+                    callback(AppError::repositoryFailure(QStringLiteral("设置产品状态事务结果数量异常")));
                     return;
                 }
 
-                const auto& updateResult = result.statementResults.constFirst();
-
+                // 校验产品状态更新
+                const auto& updateResult = result.statementResults[0];
                 if (updateResult.affectedRows > 1) {
                     callback(AppError::repositoryFailure(QStringLiteral("数据库产品状态更新影响行数异常")));
+                    return;
+                }
+
+                // 校验审计日志写入
+                const auto& auditResult = result.statementResults[1];
+                if (auditResult.affectedRows != 1) {
+                    callback(AppError::repositoryFailure(QStringLiteral("设置产品状态审计日志写入异常")));
                     return;
                 }
 

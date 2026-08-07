@@ -35,17 +35,20 @@ public:
     // 创建产品
     void createProduct(
         const Product& product,
+        const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback_) override;
     // 更新产品
     void updateProduct(
         const Product& product,
+        const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback_) override;
     // 设置产品状态
     void setProductActive(
         quint32 id,
         bool active,
+        const AuditContext& auditContext,
         QObject* owner,
         ActiveCallback callback) override;
 

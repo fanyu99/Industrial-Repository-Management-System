@@ -272,7 +272,7 @@ CREATE TABLE audit_logs (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '审计日志ID',
     operator_id INT UNSIGNED NOT NULL COMMENT '操作人ID',
     username VARCHAR(50) NOT NULL COMMENT '操作人用户名',
-    action VARCHAR(20) NOT NULL COMMENT '操作,login/logout/create/update/confirm/cancel/export',
+    action VARCHAR(20) NOT NULL COMMENT '操作,login/logout/create/update/confirm/cancel/disable/export',
     target_type VARCHAR(20) NOT NULL COMMENT '目标类型',
     target_id VARCHAR(64) COMMENT '目标ID',
     detail JSON COMMENT '操作详情',

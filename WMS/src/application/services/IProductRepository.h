@@ -1,6 +1,7 @@
 // 物资仓库接口
 #pragma once
 #include "AppError.h"
+#include "AuditContext.h"
 #include "ProductDto.h"
 #include "product.h"
 
@@ -10,13 +11,13 @@
 #include <optional>
 // 操作结果
 struct ProductOperationResult {
-    bool success{false};
+    bool success { false };
     std::optional<Product> product;
     std::optional<AppError> error;
 };
 // 分页结果
 struct ProductPageResult {
-    bool success{false};
+    bool success { false };
     PageResult<ProductListItemDto> page;
     std::optional<AppError> error;
 };
@@ -43,12 +44,14 @@ public:
     // 创建物品,由ProductService校验是否合法
     virtual void createProduct(
         const Product& product,
+        const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback)
         = 0;
     // 更新物品,由ProductService校验是否合法与编码唯一性
     virtual void updateProduct(
         const Product& product,
+        const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback)
         = 0;
@@ -56,6 +59,7 @@ public:
     virtual void setProductActive(
         quint32 id,
         bool active,
+        const AuditContext& auditContext,
         QObject* owner,
         ActiveCallback callback)
         = 0;

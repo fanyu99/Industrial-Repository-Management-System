@@ -10,6 +10,15 @@ InboundService::InboundService(IInboundRepository& repository, SessionManager& s
     , QObject(parent)
 {
 }
+AuditContext InboundService::buildAuditContext() const noexcept
+{
+    const auto user = sessionManager_.currentUser();
+    if (!user.has_value()) {
+        return {};
+    }
+    return { user->userName, user->id };
+}
+
 // 获取当前的用户
 std::optional<AuthenticatedUser> InboundService::currentUser() const noexcept
 {
@@ -294,7 +303,8 @@ void InboundService::createDraft(
     }
     // 创建草稿订单(是否存在由repository判断)
     const InboundOrder order = requestToOrderResult.order.value();
-    repository_.createDraft(order, ownerPtr.data(), [ownerPtr, callback](const InboundOperationResult& result) {
+    const auto auditCtx = buildAuditContext();
+    repository_.createDraft(order, auditCtx, ownerPtr.data(), [ownerPtr, callback](const InboundOperationResult& result) {
         if (ownerPtr.isNull() || !callback)
             return;
         if (!result.success) {
@@ -388,8 +398,7 @@ std::optional<AppError> InboundService::validateConfirmInboundOrder(const Inboun
             QStringLiteral("确认时间无效")
         };
     }
-    if(order.lines.isEmpty())
-    {
+    if (order.lines.isEmpty()) {
         return AppError {
             AppErrorCategory::Validation,
             AppErrorCode::InvalidInboundOrder,
@@ -443,8 +452,8 @@ void InboundService::confirmOrder(
                 QStringLiteral("订单ID无效") } });
         return;
     }
-    const auto user = currentUser();
-    if (!user.has_value() || user->id == 0) {
+    const auto auditCtx = buildAuditContext();
+    if (auditCtx.operatorId == 0) {
         callback(InboundOperationResult {
             false,
             std::nullopt,
@@ -454,9 +463,8 @@ void InboundService::confirmOrder(
                 QStringLiteral("当前用户未认证") } });
         return;
     }
-    const quint32 operatorId = user->id;
     // 直接确认(取消查询时带来的竟态问题)
-    repository_.confirmOrder(id, operatorId, ownerPtr.data(), [ownerPtr, callback](const InboundOperationResult& result) {
+    repository_.confirmOrder(id, auditCtx, ownerPtr.data(), [ownerPtr, callback](const InboundOperationResult& result) {
         if (ownerPtr.isNull() || !callback)
             return;
         if (!result.success) {

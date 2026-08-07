@@ -1,5 +1,6 @@
 #pragma once
 #include "AppError.h"
+#include "AuditContext.h"
 #include "InboundDto.h"
 #include "ProductDto.h"
 #include <QString>
@@ -28,6 +29,7 @@ public:
     // 确保orderNo在INSERT前已经生成(Service层创建的orderNo允许为空,但是数据库层不允许为空!)
     virtual void createDraft(
         const InboundOrder& order,
+        const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback)
         = 0;
@@ -53,7 +55,7 @@ public:
     // 确认订单
     virtual void confirmOrder(
         quint32 id,
-        quint32 operatorId,
+        const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback)
         = 0;

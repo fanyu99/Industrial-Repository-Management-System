@@ -12,12 +12,13 @@ class MySqlInboundRepository : public QObject, public IInboundRepository {
     Q_OBJECT
 public:
     static int headerColumns;
-    static int linesColumns ;
+    static int linesColumns;
     explicit MySqlInboundRepository(DatabaseExecutor& executor, QObject* parent = nullptr);
     ~MySqlInboundRepository() = default;
     // 创建草稿订单
     void createDraft(
         const InboundOrder& order,
+        const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback) override;
     // 根据id查询订单
@@ -39,17 +40,22 @@ public:
     // 确认订单
     void confirmOrder(
         quint32 id,
-        quint32 operatorId,
+        const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback) override;
     // 将数据库错误映射为应用错误
-    static AppError mapDatabaseErrorToAppError(const DatabaseError& error);
+    // operationContext: 操作上下文标识(如"createDraft"、"confirmOrder"),为空时仅按错误码映射
+    // failedStatementIndex: 失败语句在事务中的索引,<0时忽略精确映射
+    static AppError mapDatabaseErrorToAppError(
+        const DatabaseError& error,
+        const QString& operationContext = QString(),
+        int failedStatementIndex = -1);
     // 将数据库中的订单状态(字符串)转换为枚举
-    static InboundOrderStatus mapDatabaseStatusToEnum(const QString& status="draft");
+    static InboundOrderStatus mapDatabaseStatusToEnum(const QString& status = "draft");
     // 将枚举转换为数据库订单状态
-    static QString mapEnumToDatabaseStatus(InboundOrderStatus status=InboundOrderStatus::Draft);
-    
-    private slots:
+    static QString mapEnumToDatabaseStatus(InboundOrderStatus status = InboundOrderStatus::Draft);
+
+private slots:
     // 数据库任务完成
     void onTaskFinished(const DatabaseResult& result);
 

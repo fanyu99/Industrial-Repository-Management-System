@@ -5,6 +5,8 @@ qt_add_library(WmsRepositories STATIC
     MySqlAuthRepository.h
     MySqlInboundRepository.cpp
     MySqlInboundRepository.h
+    MySqlAuditLogRepository.h
+    MySqlAuditLogRepository.cpp
 )
 target_link_libraries(
     WmsRepositories

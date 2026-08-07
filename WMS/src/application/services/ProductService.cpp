@@ -212,7 +212,8 @@ void ProductService::createProduct(
             return;
         }
         // 不存在,就创建新产品并回调结果
-        repository_.createProduct(product, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const ProductOperationResult& repoResult) {
+        const auto auditCtx = buildAuditContext();
+        repository_.createProduct(product, auditCtx, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const ProductOperationResult& repoResult) {
             if (ownerPtr.isNull() || !callback)
                 return;
             // 如果创建失败
@@ -263,11 +264,12 @@ void ProductService::updateProduct(
         }
         // 如果已存在且编码不同(不是自己)
         if (repoResult.product.has_value() && repoResult.product.value().id != product.id) {
-                callback(ProductOperationResult { false, std::nullopt, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品编码已存在") } });
+            callback(ProductOperationResult { false, std::nullopt, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品编码已存在") } });
             return;
         }
         // 对应编码的产品不存在,就更新产品
-        repository_.updateProduct(product, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const ProductOperationResult& repoResult) {
+        const auto auditCtx = buildAuditContext();
+        repository_.updateProduct(product, auditCtx, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const ProductOperationResult& repoResult) {
             if (ownerPtr.isNull() || !callback)
                 return;
             // 如果更新失败
@@ -308,12 +310,22 @@ void ProductService::setProductActive(
         return;
     }
     // 设置产品状态并回调结果
-    repository_.setProductActive(productId, active, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const std::optional<AppError>& error) {
+    const auto auditCtx = buildAuditContext();
+    repository_.setProductActive(productId, active, auditCtx, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const std::optional<AppError>& error) {
         if (ownerPtr.isNull() || !callback)
             return;
-            callback(error);
+        callback(error);
     });
 }
+AuditContext ProductService::buildAuditContext() const noexcept
+{
+    const auto user = sessionManager_.currentUser();
+    if (!user.has_value()) {
+        return {};
+    }
+    return { user->userName, user->id };
+}
+
 // 获取当前用户
 std::optional<AuthenticatedUser> ProductService::currentUser() const noexcept
 {

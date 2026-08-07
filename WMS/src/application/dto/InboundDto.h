@@ -17,7 +17,7 @@ id, order_id, product_id, quantity, unit_price
 // 入库订单DTO
 struct InboundOrderListItemDto {
     quint32 id { 0 };
-    QString orderNo;
+    QString orderNo;// INB-YYYYMMDD-序号
     QString supplier;
     InboundOrderStatus status { InboundOrderStatus::Draft };
 

@@ -339,6 +339,7 @@ public:
 
     void createDraft(
         const InboundOrder& order,
+        const AuditContext& /* auditContext */,
         QObject* owner,
         OperateCallback callback) override
     {
@@ -368,7 +369,7 @@ public:
 
     void confirmOrder(
         quint32 id,
-        quint32 operatorId,
+        const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback) override
     {
@@ -378,12 +379,12 @@ public:
         }
 
         lastConfirmOrderId = id;
-        lastConfirmOperatorId = operatorId;
+        lastConfirmOperatorId = auditContext.operatorId;
 
         if (deferConfirmOrder) {
             pendingConfirmCallback_ = std::move(callback);
             pendingConfirmId_ = id;
-            pendingConfirmOperatorId_ = operatorId;
+            pendingConfirmOperatorId_ = auditContext.operatorId;
             pendingConfirmOwner_ = ownerPtr;
             return;
         }
@@ -395,7 +396,7 @@ public:
             return;
         }
 
-        callback(performConfirm(id, operatorId));
+        callback(performConfirm(id, auditContext.operatorId));
     }
 
 private:
@@ -489,20 +490,40 @@ private:
     {
         return InboundOrderListItemDto {
             order.id,
-                order.orderNo,
-                order.supplier,
-                order.status,
-                order.operatorId,
-                QString(),
-                order.warehouseId,
-                QString()
+            order.orderNo,
+            order.supplier,
+            order.status,
+            order.operatorId,
+            QString(),
+            order.warehouseId,
+            QString()
         };
     }
 
-    // 生成订单号(基于自增 id,保证唯一且非空,供 Service 传入空 orderNo 时使用)
-    QString generateOrderNo(quint32 id) const
+    // 生成订单号: INB-YYYYMMDD-NNNNNN (日期+当日序号)
+    // 与真实 MySqlInboundRepository 的 SQL 逻辑一致:当日最大序号+1
+    QString generateOrderNo() const
     {
-        return QStringLiteral("IN%1").arg(static_cast<qulonglong>(id), 6, 10, QChar('0'));
+        const auto now = QDateTime::currentDateTime();
+        const QString todayPrefix = QStringLiteral("INB-%1-").arg(
+            now.toString(QStringLiteral("yyyyMMdd")));
+
+        // 遍历已存在的订单,找到当日最大序号
+        int maxSeq = 0;
+        for (const auto& order : orders) {
+            if (order.orderNo.startsWith(todayPrefix)) {
+                const int lastDash = order.orderNo.lastIndexOf('-');
+                if (lastDash >= 0) {
+                    bool ok = false;
+                    const int seq = order.orderNo.mid(lastDash + 1).toInt(&ok);
+                    if (ok && seq > maxSeq) {
+                        maxSeq = seq;
+                    }
+                }
+            }
+        }
+
+        return QStringLiteral("%1%2").arg(todayPrefix).arg(maxSeq + 1, 6, 10, QChar('0'));
     }
 
     // createDraft 的实际持久化逻辑:分配 id、生成 orderNo、回填订单行 orderId、写入内存仓库。
@@ -536,7 +557,7 @@ private:
         }
         // 确保orderNo在INSERT前已经生成(Service 允许为空,数据库层不允许为空)
         if (created.orderNo.trimmed().isEmpty()) {
-            created.orderNo = generateOrderNo(created.id);
+            created.orderNo = generateOrderNo();
         }
         created.status = InboundOrderStatus::Draft;
         const auto now = QDateTime::currentDateTime();

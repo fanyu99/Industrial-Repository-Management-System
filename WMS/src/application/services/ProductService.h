@@ -1,4 +1,5 @@
 #pragma once
+#include "AuditContext.h"
 #include "IProductRepository.h"
 #include "Permission.h"
 #include "SessionManager.h"
@@ -29,9 +30,11 @@ public:
     // 校验产品请求是否合法
     [[nodiscard]] std::optional<AppError> validateRequest(
         const PageRequest& request) const noexcept;
-    // 校验产品的过滤器
+    // 校验用户的过滤器
     [[nodiscard]] std::optional<AppError> validateFilter(
         const ProductFilter& filter) const noexcept;
+    // 构建审计上下文
+    [[nodiscard]] AuditContext buildAuditContext() const noexcept;
     // 列出产品
     void listProducts(
         const ProductFilter& filter,
