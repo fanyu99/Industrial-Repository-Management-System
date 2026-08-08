@@ -49,6 +49,8 @@ public:
     bool deferListOrders { false };
     bool deferCreateDraft { false };
     bool deferConfirmOrder { false };
+    bool deferFindById { false };
+    bool deferFindByOrderNo { false };
 
     // ===== 挂起状态查询 =====
 
@@ -71,6 +73,16 @@ public:
     [[nodiscard]] bool hasPendingConfirmOrder() const noexcept
     {
         return static_cast<bool>(pendingConfirmCallback_);
+    }
+
+    [[nodiscard]] bool hasPendingFindById() const noexcept
+    {
+        return static_cast<bool>(pendingFindByIdCallback_);
+    }
+
+    [[nodiscard]] bool hasPendingFindByOrderNo() const noexcept
+    {
+        return static_cast<bool>(pendingFindByOrderNoCallback_);
     }
 
     // ===== listOrders 完成 =====
@@ -205,6 +217,96 @@ public:
         completePendingConfirmOrder(InboundOperationResult { false, std::nullopt, error });
     }
 
+    // ===== findById 完成 =====
+
+    void completePendingFindById(const InboundOperationResult& result)
+    {
+        if (!pendingFindByIdCallback_) {
+            return;
+        }
+        if (pendingFindByIdOwner_.isNull()) {
+            resetPendingFindById();
+            return;
+        }
+        auto callback = std::move(pendingFindByIdCallback_);
+        resetPendingFindById();
+        callback(result);
+    }
+
+    void completePendingFindByIdSuccess()
+    {
+        if (!pendingFindByIdCallback_) {
+            return;
+        }
+        if (pendingFindByIdOwner_.isNull()) {
+            resetPendingFindById();
+            return;
+        }
+        // 错误注入优先
+        if (nextFindError.has_value()) {
+            const auto error = nextFindError;
+            nextFindError.reset();
+            auto callback = std::move(pendingFindByIdCallback_);
+            resetPendingFindById();
+            callback(InboundOperationResult { false, std::nullopt, error });
+            return;
+        }
+        const quint32 id = pendingFindByIdId_;
+        auto callback = std::move(pendingFindByIdCallback_);
+        resetPendingFindById();
+        callback(performFindById(id));
+    }
+
+    void completePendingFindByIdError(const AppError& error)
+    {
+        completePendingFindById(InboundOperationResult { false, std::nullopt, error });
+    }
+
+    // ===== findByOrderNo 完成 =====
+
+    void completePendingFindByOrderNo(const InboundOperationResult& result)
+    {
+        if (!pendingFindByOrderNoCallback_) {
+            return;
+        }
+        if (pendingFindByOrderNoOwner_.isNull()) {
+            resetPendingFindByOrderNo();
+            return;
+        }
+        auto callback = std::move(pendingFindByOrderNoCallback_);
+        resetPendingFindByOrderNo();
+        callback(result);
+    }
+
+    void completePendingFindByOrderNoSuccess()
+    {
+        if (!pendingFindByOrderNoCallback_) {
+            return;
+        }
+        if (pendingFindByOrderNoOwner_.isNull()) {
+            resetPendingFindByOrderNo();
+            return;
+        }
+        // 错误注入优先
+        if (nextFindError.has_value()) {
+            const auto error = nextFindError;
+            nextFindError.reset();
+            auto callback = std::move(pendingFindByOrderNoCallback_);
+            resetPendingFindByOrderNo();
+            callback(InboundOperationResult { false, std::nullopt, error });
+            return;
+        }
+        const QString orderNo = pendingFindByOrderNoOrderNo_;
+        auto callback = std::move(pendingFindByOrderNoCallback_);
+        resetPendingFindByOrderNo();
+        callback(performFindByOrderNo(orderNo));
+    }
+
+    void completePendingFindByOrderNoError(const AppError& error)
+    {
+        completePendingFindByOrderNo(InboundOperationResult { false, std::nullopt, error });
+    }
+
     // ===== 辅助 =====
 
     void addOrder(const InboundOrder& order)
@@ -232,10 +334,14 @@ public:
         deferListOrders = false;
         deferCreateDraft = false;
         deferConfirmOrder = false;
+        deferFindById = false;
+        deferFindByOrderNo = false;
 
         pendingListOps_.clear();
         resetPendingCreate();
         resetPendingConfirm();
+        resetPendingFindById();
+        resetPendingFindByOrderNo();
         nextId_ = 1;
         nextLineId_ = 1;
     }
@@ -286,6 +392,13 @@ public:
             return;
         }
 
+        if (deferFindById) {
+            pendingFindByIdCallback_ = std::move(callback);
+            pendingFindByIdId_ = id;
+            pendingFindByIdOwner_ = ownerPtr;
+            return;
+        }
+
         if (nextFindError.has_value()) {
             const auto error = nextFindError;
             nextFindError.reset();
@@ -293,17 +406,7 @@ public:
             return;
         }
 
-        const auto found = std::find_if(orders.cbegin(), orders.cend(),
-            [id](const InboundOrder& order) {
-                return order.id == id;
-            });
-
-        if (found == orders.cend()) {
-            callback(InboundOperationResult { true, std::nullopt, std::nullopt });
-            return;
-        }
-
-        callback(InboundOperationResult { true, *found, std::nullopt });
+        callback(performFindById(id));
     }
 
     void findByOrderNo(
@@ -316,6 +419,13 @@ public:
             return;
         }
 
+        if (deferFindByOrderNo) {
+            pendingFindByOrderNoCallback_ = std::move(callback);
+            pendingFindByOrderNoOrderNo_ = orderNo;
+            pendingFindByOrderNoOwner_ = ownerPtr;
+            return;
+        }
+
         if (nextFindError.has_value()) {
             const auto error = nextFindError;
             nextFindError.reset();
@@ -323,18 +433,7 @@ public:
             return;
         }
 
-        const auto normalizedOrderNo = orderNo.trimmed();
-        const auto found = std::find_if(orders.cbegin(), orders.cend(),
-            [&normalizedOrderNo](const InboundOrder& order) {
-                return order.orderNo == normalizedOrderNo;
-            });
-
-        if (found == orders.cend()) {
-            callback(InboundOperationResult { true, std::nullopt, std::nullopt });
-            return;
-        }
-
-        callback(InboundOperationResult { true, *found, std::nullopt });
+        callback(performFindByOrderNo(orderNo));
     }
 
     void createDraft(
@@ -478,7 +577,8 @@ private:
         if (!filter.keyword.trimmed().isEmpty()) {
             const auto keyword = filter.keyword.trimmed();
             if (!order.orderNo.contains(keyword, Qt::CaseInsensitive)
-                && !order.supplier.contains(keyword, Qt::CaseInsensitive)) {
+                && !order.supplier.contains(keyword, Qt::CaseInsensitive)
+                && !order.remark.contains(keyword, Qt::CaseInsensitive)) {
                 return false;
             }
         }
@@ -488,16 +588,24 @@ private:
 
     static InboundOrderListItemDto toListItem(const InboundOrder& order)
     {
-        return InboundOrderListItemDto {
-            order.id,
-            order.orderNo,
-            order.supplier,
-            order.status,
-            order.operatorId,
-            QString(),
-            order.warehouseId,
-            QString()
-        };
+        InboundOrderListItemDto dto;
+        dto.id = order.id;
+        dto.orderNo = order.orderNo;
+        dto.supplier = order.supplier;
+        dto.status = order.status;
+        dto.operatorId = order.operatorId;
+        dto.operatorName = QString();
+        dto.warehouseId = order.warehouseId;
+        dto.warehouseName = QString();
+        dto.lineCount = order.lines.size();
+        dto.totalQuantity = 0;
+        for (const auto& line : order.lines) {
+            dto.totalQuantity += line.quantity;
+        }
+        dto.createdAt = order.createdAt;
+        dto.updatedAt = order.updatedAt;
+        dto.confirmedAt = order.confirmedAt;
+        return dto;
     }
 
     // 生成订单号: INB-YYYYMMDD-NNNNNN (日期+当日序号)
@@ -619,6 +727,39 @@ private:
         return InboundOperationResult { true, *found, std::nullopt };
     }
 
+    // findById 的实际查找逻辑:按 id 查找,未找到返回 success=true、order=nullopt。
+    // 立即完成路径与 completePendingFindByIdSuccess 共用此逻辑。
+    InboundOperationResult performFindById(quint32 id) const
+    {
+        const auto found = std::find_if(orders.cbegin(), orders.cend(),
+            [id](const InboundOrder& order) {
+                return order.id == id;
+            });
+
+        if (found == orders.cend()) {
+            return InboundOperationResult { true, std::nullopt, std::nullopt };
+        }
+
+        return InboundOperationResult { true, *found, std::nullopt };
+    }
+
+    // findByOrderNo 的实际查找逻辑:按订单号查找,未找到返回 success=true、order=nullopt。
+    // 立即完成路径与 completePendingFindByOrderNoSuccess 共用此逻辑。
+    InboundOperationResult performFindByOrderNo(const QString& orderNo) const
+    {
+        const auto normalizedOrderNo = orderNo.trimmed();
+        const auto found = std::find_if(orders.cbegin(), orders.cend(),
+            [&normalizedOrderNo](const InboundOrder& order) {
+                return order.orderNo == normalizedOrderNo;
+            });
+
+        if (found == orders.cend()) {
+            return InboundOperationResult { true, std::nullopt, std::nullopt };
+        }
+
+        return InboundOperationResult { true, *found, std::nullopt };
+    }
+
     quint32 nextId_ { 1 };
     quint32 nextLineId_ { 1 };
 
@@ -633,4 +774,26 @@ private:
     quint32 pendingConfirmId_ { 0 };
     quint32 pendingConfirmOperatorId_ { 0 };
     QPointer<QObject> pendingConfirmOwner_;
+
+    OperateCallback pendingFindByIdCallback_;
+    quint32 pendingFindByIdId_ { 0 };
+    QPointer<QObject> pendingFindByIdOwner_;
+
+    OperateCallback pendingFindByOrderNoCallback_;
+    QString pendingFindByOrderNoOrderNo_;
+    QPointer<QObject> pendingFindByOrderNoOwner_;
+
+    void resetPendingFindById() noexcept
+    {
+        pendingFindByIdCallback_ = nullptr;
+        pendingFindByIdId_ = 0;
+        pendingFindByIdOwner_.clear();
+    }
+
+    void resetPendingFindByOrderNo() noexcept
+    {
+        pendingFindByOrderNoCallback_ = nullptr;
+        pendingFindByOrderNoOrderNo_.clear();
+        pendingFindByOrderNoOwner_.clear();
+    }
 };

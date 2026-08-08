@@ -25,7 +25,9 @@ AppError MySqlInboundRepository::mapDatabaseErrorToAppError(
         if (operationContext == QStringLiteral("confirmOrder")) {
             // 语句4: INSERT INTO stock_movements (movement_no 唯一键冲突)
             if (failedStatementIndex == 3 && error.nativeErrorCode == QStringLiteral("1062")) {
-                return AppError::databaseFailure(QStringLiteral("库存流水编号冲突，请重试"));
+                if (error.databaseText.contains(QStringLiteral("uk_movement_idem")))
+                    return AppError::databaseFailure(QStringLiteral("库存流水编号已存在,请勿重复确认"));
+                else return AppError::databaseFailure(QStringLiteral("库存流水编号冲突,请重试"));
             }
             if (failedStatementIndex == 1 && error.code == DatabaseErrorCode::None) {
                 return AppError{
@@ -39,7 +41,7 @@ AppError MySqlInboundRepository::mapDatabaseErrorToAppError(
         if (operationContext == QStringLiteral("createDraft")) {
             // 语句2: INSERT INTO inbound_orders (order_no 唯一键冲突)
             if (failedStatementIndex == 2 && error.nativeErrorCode == QStringLiteral("1062")) {
-                return AppError::databaseFailure(QStringLiteral("订单编号冲突，请重试"));
+                return AppError::databaseFailure(QStringLiteral("订单编号已存在，请勿重复创建"));
             }
         }
     }
@@ -954,7 +956,7 @@ void MySqlInboundRepository::confirmOrder(
         "'warehouseId',o.warehouse_id),"
         "CURRENT_TIMESTAMP(3) "
         "FROM users u "
-        "JOIN inbound_orders o ON o.id =:targetId "
+        "JOIN inbound_orders o ON o.id = :targetId "
         "WHERE u.id = :operatorId");
     statement4.parameters.insert("operatorId", auditContext.operatorId);
     statement4.parameters.insert("targetId", id);

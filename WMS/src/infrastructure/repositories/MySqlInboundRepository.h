@@ -55,15 +55,16 @@ public:
     // 将枚举转换为数据库订单状态
     static QString mapEnumToDatabaseStatus(InboundOrderStatus status = InboundOrderStatus::Draft);
 
-private slots:
-    // 数据库任务完成
-    void onTaskFinished(const DatabaseResult& result);
-
-private:
-    DatabaseExecutor& executor_;
     // 将订单行(明细)映射为订单
     static std::optional<InboundOrderLine> mapInboundOrderLine(
         const QStringList& columns,
         const QVariantList& row);
+private slots:
+    // 数据库任务完成
+    void onTaskFinished(const DatabaseResult& result);
+
+
+private:
+    DatabaseExecutor& executor_;
     QHash<QUuid, PendingRequest> pending_;
 };
