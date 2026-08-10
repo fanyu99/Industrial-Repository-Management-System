@@ -1,6 +1,8 @@
 #pragma once
 #include "MasterDataDto.h"
 #include <QString>
+#include <QObject>
+#include <functional>
 class IMasterDataRepository {
 public:
     using UnitListCallback = std::function<void(const UnitListResult&)>; // 单位列出回调

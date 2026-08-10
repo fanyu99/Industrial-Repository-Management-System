@@ -73,7 +73,7 @@ void MySqlMasterDataRepository::listUnits(bool activeOnly, QObject* owner, const
     statement.sql = QStringLiteral("SELECT id,code,name,is_active as isActive FROM units");
     // 如果仅激活,添加where条件
     if (activeOnly)
-        statement.sql += QStringLiteral(" WHERE isActive = 1");
+        statement.sql += QStringLiteral(" WHERE is_active = 1");
     // 包装任务
     DatabaseTask task;
     task.type = DatabaseTaskType::Single;
@@ -158,7 +158,7 @@ void MySqlMasterDataRepository::listCategories(bool activeOnly, QObject* owner, 
     statement.sql = QStringLiteral("SELECT id,code,name,is_active as isActive FROM categories");
     // 如果仅激活,添加where条件
     if (activeOnly)
-        statement.sql += QStringLiteral(" WHERE isActive = 1");
+        statement.sql += QStringLiteral(" WHERE is_active = 1");
     // 包装任务
     DatabaseTask task;
     task.type = DatabaseTaskType::Single;

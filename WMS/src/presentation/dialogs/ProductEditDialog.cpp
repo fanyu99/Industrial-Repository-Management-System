@@ -40,6 +40,11 @@ ProductEditDialog::ProductEditDialog(ProductEditMode mode, QWidget* parent)
     activeCheckBox_ = new QCheckBox(QStringLiteral("启用产品"));
     formLayout->addRow(QStringLiteral("产品状态:"), activeCheckBox_);
 
+    // 8. 分类/单位仅激活复选框
+    masterdataActiveOnlyCheckBox_ = new QCheckBox(QStringLiteral("仅激活的单位/分类"));
+    masterdataActiveOnlyCheckBox_->setChecked(true);
+    formLayout->addRow(QStringLiteral("分类/单位仅激活:"), masterdataActiveOnlyCheckBox_);
+
     mainLayout->addLayout(formLayout);
 
     // 8. 确认/取消按钮
@@ -61,6 +66,11 @@ quint32 ProductEditDialog::editingProductId() const noexcept
 bool ProductEditDialog::isActive() const noexcept
 {
     return activeCheckBox_->isChecked();
+}
+// 是否仅激活的单位/分类显示
+bool ProductEditDialog::isMasterdataActiveOnly() const noexcept
+{
+    return masterdataActiveOnlyCheckBox_->isChecked();
 }
 // 设置产品信息
 void ProductEditDialog::setProduct(const ProductListItemDto& product)
@@ -176,6 +186,7 @@ void ProductEditDialog::setMode(ProductEditMode mode)
 {
     editMode_ = mode;
     switch (mode) {
+        // 创建产品
     case ProductEditMode::Create: {
         setWindowTitle(QStringLiteral("创建产品"));
         if (codeEdit_)
@@ -188,12 +199,15 @@ void ProductEditDialog::setMode(ProductEditMode mode)
             safetyStockSpin_->setEnabled(true);
         if (activeCheckBox_)
             activeCheckBox_->setEnabled(true);
+        if (masterdataActiveOnlyCheckBox_)
+            masterdataActiveOnlyCheckBox_->setEnabled(true);
         if (categoryNameComboBox_) 
             categoryNameComboBox_->setEnabled(true);
         if (unitNameComboBox_)
             unitNameComboBox_->setEnabled(true);
         break;
     }
+        // 编辑产品
     case ProductEditMode::Edit:
         setWindowTitle(QStringLiteral("编辑产品"));
         if (codeEdit_)
@@ -206,11 +220,14 @@ void ProductEditDialog::setMode(ProductEditMode mode)
             safetyStockSpin_->setEnabled(true);
         if (activeCheckBox_)
             activeCheckBox_->setEnabled(true);
+        if (masterdataActiveOnlyCheckBox_)
+            masterdataActiveOnlyCheckBox_->setEnabled(true);
         if (categoryNameComboBox_) 
             categoryNameComboBox_->setEnabled(true);
         if (unitNameComboBox_)
             unitNameComboBox_->setEnabled(true);
         break;
+        // 编辑产品状态
     case ProductEditMode::EditState:
         setWindowTitle(QStringLiteral("编辑产品状态"));
         if (codeEdit_)
@@ -223,6 +240,8 @@ void ProductEditDialog::setMode(ProductEditMode mode)
             safetyStockSpin_->setEnabled(false);
         if (activeCheckBox_)
             activeCheckBox_->setEnabled(true);
+        if (masterdataActiveOnlyCheckBox_)
+            masterdataActiveOnlyCheckBox_->setEnabled(false);
         if (categoryNameComboBox_)
             categoryNameComboBox_->setEnabled(false);
         if (unitNameComboBox_)

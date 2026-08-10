@@ -27,6 +27,7 @@ public:
     ~ProductEditDialog() = default;
     quint32 editingProductId() const noexcept; // 获取当前编辑的产品ID
     bool isActive() const noexcept; // 获取当前产品的状态
+    bool isMasterdataActiveOnly() const noexcept; // 获取分类/单位仅激活复选框状态
     void setProduct(const ProductListItemDto& product); // 设置编辑的产品信息
     bool validateInput(QString& errorMessage) const noexcept; // 校验输入
     CreateProductRequest createRequest() const noexcept; // 创建创建产品请求
@@ -42,6 +43,7 @@ private:
     QTextEdit* specificationEdit_; // 产品规格编辑
     QSpinBox* safetyStockSpin_; // 安全库存编辑
     QCheckBox* activeCheckBox_; // 产品状态复选框
+    QCheckBox* masterdataActiveOnlyCheckBox_; // 分类/单位仅激活复选框
     QDialogButtonBox* sureButtonBox_; // 确认/取消按钮框
     quint32 editingProductId_ { 0 }; // 编辑的产品ID
     ProductEditMode editMode_ { ProductEditMode::Create }; // 编辑模式(创建/编辑)

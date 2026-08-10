@@ -1,14 +1,16 @@
 #include "ProductPage.h"
 #include <QAbstractItemModel>
+#include <QEventLoop>
 #include <QHBoxLayout>
 #include <QMessageBox>
 #include <QStringLiteral>
 #include <QVBoxLayout>
 #include <QWidget>
-ProductPage::ProductPage(ProductService* ps, ProductTableModel* tableModel, QWidget* parent)
-    : QWidget(parent),
-      productService_ { ps },
-      tableModel_ { tableModel }
+ProductPage::ProductPage(ProductService* ps, MasterDataService* masterDataService, ProductTableModel* tableModel, QWidget* parent)
+    : QWidget(parent)
+    , productService_ { ps }
+    , masterDataService_ { masterDataService }
+    , tableModel_ { tableModel }
 {
     setWindowTitle(QStringLiteral("产品页"));
     if (productService_) {
@@ -128,9 +130,9 @@ void ProductPage::reloadCurrentPage()
             // 如果失败,更改状态并显示错误
             if (!result.success) {
                 setPageState(PageState::Error);
-                if(result.error.has_value())
+                if (result.error.has_value())
                     showOperationError(result.error.value());
-                else 
+                else
                     showErrorMessage(QStringLiteral("未知错误!"));
                 return;
             }
@@ -167,20 +169,38 @@ std::optional<ProductListItemDto> ProductPage::selectedProductDto() const
     return product;
 }
 // 将分类/单位服务加载到产品编辑对话框
-bool ProductPage::loadProductDialogOptions(ProductEditDialog& dialog)
+void ProductPage::loadProductDialogOptions(ProductEditDialog& dialog, bool activeOnly)
 {
-    QString comboErrorMessage;
-    dialog.addCategory(QStringLiteral("默认分类"), 1, comboErrorMessage);
-    if (!comboErrorMessage.isEmpty()) {
-        showOperationError(AppError::repositoryFailure(comboErrorMessage));
-        return false;
+    if (!masterDataService_) {
+        showErrorMessage(QStringLiteral("基础数据服务不可用!"));
+        return;
     }
-    dialog.addUnit(QStringLiteral("默认单位"), 1, comboErrorMessage);
-    if (!comboErrorMessage.isEmpty()) {
-        showOperationError(AppError::repositoryFailure(comboErrorMessage));
-        return false;
-    }
-    return true;
+    QEventLoop eventloop; // 等待两个加载完成后再退出
+    int readyCount = 0;
+    auto Ready = [&]() {
+        if(++readyCount==2)eventloop.quit(); };
+    masterDataService_->listCategories(&dialog, activeOnly, [&](const CategoryListResult& result) {
+        if (result.success && result.categories.has_value()) {
+            for (const auto& category : result.categories.value()) {
+                QString error;
+                dialog.addCategory(category.name, category.id, error);
+            }
+        }
+
+        Ready();
+    });
+    masterDataService_->listUnits(&dialog, activeOnly, [&](const UnitListResult& result) {
+        if (result.success && result.units.has_value()) {
+            for (const auto& unit : result.units.value()) {
+                QString error;
+                dialog.addUnit(unit.name, unit.id, error);
+            }
+        }
+
+        Ready();
+    });
+
+    eventloop.exec(); // 等待分类/单位加载加载完成
 }
 // 槽函数
 
@@ -203,15 +223,10 @@ void ProductPage::onCreateClicked()
     }
     ProductEditDialog dialog(ProductEditMode::Create, this);
 
-    // TODO: 后续从分类/单位服务中加载
-    if (!loadProductDialogOptions(dialog)) { // 加载分类/单位服务到产品编辑对话框失败
+    // 从分类/单位服务中加载
+    loadProductDialogOptions(dialog, dialog.isMasterdataActiveOnly());
+    if (dialog.exec() != QDialog::Accepted)
         return;
-    }
-
-    // 如果取消,返回
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
     // 校验输入
     QString errorMessage;
     if (!dialog.validateInput(errorMessage)) {
@@ -283,16 +298,12 @@ void ProductPage::onEditClicked()
 
     ProductEditDialog dialog(ProductEditMode::Edit, this);
 
-    // TODO: 后续从分类/单位服务中加载
-    if (!loadProductDialogOptions(dialog)) { // 加载分类/单位服务到产品编辑对话框失败
-        return;
-    }
-
+    // 加载分类/单位
+    loadProductDialogOptions(dialog, dialog.isMasterdataActiveOnly());
     dialog.setProduct(productDto.value());
-    // 如果取消,返回
-    if (dialog.exec() != QDialog::Accepted) {
+    if (dialog.exec() != QDialog::Accepted)
         return;
-    }
+
     // 校验输入
     QString errorMessage;
     if (!dialog.validateInput(errorMessage)) {

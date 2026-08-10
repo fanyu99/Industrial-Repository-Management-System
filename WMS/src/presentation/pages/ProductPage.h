@@ -4,6 +4,7 @@
 #include "ProductEditDialog.h"
 #include "ProductService.h"
 #include "ProductTableModel.h"
+#include "MasterDataService.h"
 #include <QComboBox>
 #include <QItemSelectionModel>
 #include <QPushButton>
@@ -22,7 +23,7 @@ enum class PageState {
 class ProductPage : public QWidget {
     Q_OBJECT
 public:
-    ProductPage(ProductService* ps, ProductTableModel* tableModel, QWidget* parent = nullptr);
+    ProductPage(ProductService* ps, MasterDataService* masterDataService, ProductTableModel* tableModel, QWidget* parent = nullptr);
     ~ProductPage() = default;
 
     void reloadCurrentPage(); // 重新加载当前页面(在更新数据后调用,刷新页面显示,重新查询 > 乐观刷新)
@@ -43,6 +44,7 @@ private:
     QPushButton* setActiveBtn; // 设置产品状态按钮(启用/禁用)
     QPushButton* reloadBtn; // 重新加载按钮
     ProductService* productService_; // 产品服务
+    MasterDataService* masterDataService_; // 仓库基础数据服务
     ProductTableModel* tableModel_; // 产品表格模型
     std::optional<AuthenticatedUser> currentUser_; // 当前会话的用户
     ProductFilter currentFilter_; // 筛选条件
@@ -52,7 +54,7 @@ private:
     QItemSelectionModel* selectionModel_; // 选中模型
     // 获取当前选中的产品
     std::optional<ProductListItemDto> selectedProductDto() const;
-    bool loadProductDialogOptions(ProductEditDialog& dialog); // 将分类/单位服务加载到产品编辑对话框
+    void loadProductDialogOptions(ProductEditDialog& dialog,bool activeOnly = true); // 将分类/单位服务加载到产品编辑对话框
     void updateActions(); // 更新操作按钮的状态
     QString errorToTitle(const AppError& error) const; // 将错误映射为标题
 };

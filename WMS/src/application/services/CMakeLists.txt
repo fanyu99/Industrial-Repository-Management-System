@@ -22,6 +22,13 @@ qt_add_library(WmsInboundServices STATIC
     IInboundRepository.h
     FakeInboundRepository.h
 )
+
+# 基础数据服务
+qt_add_library(WmsMasterDataServices STATIC
+    MasterDataService.cpp
+    MasterDataService.h
+    IMasterDataRepository.h
+)
 target_link_libraries(WmsAuthServices PUBLIC
     WmsCore
     WmsDomain
@@ -39,6 +46,13 @@ target_link_libraries(
     WmsDomain
     WmsSecurity
 )
+target_link_libraries(
+    WmsMasterDataServices PUBLIC
+    WmsCore
+    WmsDomain
+    WmsSecurity
+    WmsDto
+)
 target_include_directories(WmsAuthServices PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
@@ -52,6 +66,12 @@ target_include_directories(WmsProductServices PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../dto
 )
 target_include_directories(WmsInboundServices PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../errors
+    ${CMAKE_CURRENT_SOURCE_DIR}/../dto
+)
+target_include_directories(WmsMasterDataServices PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_CURRENT_SOURCE_DIR}/../errors
