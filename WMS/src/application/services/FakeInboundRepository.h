@@ -720,9 +720,7 @@ private:
         const auto now = QDateTime::currentDateTime();
         found->confirmedAt = now;
         found->updatedAt = now;
-        // operatorId 保留为订单创建者;传入的 operatorId 仅供真实仓储做审计,
-        // 此处已记录到 lastConfirmOperatorId 供测试断言。
-        (void)operatorId;
+        found->operatorId = operatorId;
 
         return InboundOperationResult { true, *found, std::nullopt };
     }

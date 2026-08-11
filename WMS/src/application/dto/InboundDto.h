@@ -13,7 +13,6 @@ id, order_id, product_id, quantity, unit_price
 #include <QVector>
 #include <optional>
 #include "InboundOrder.h"
-#include "qdatetime.h"
 // 入库订单DTO
 struct InboundOrderListItemDto {
     quint32 id { 0 };

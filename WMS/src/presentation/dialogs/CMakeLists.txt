@@ -1,9 +1,33 @@
-qt_add_library(WmsDialogs STATIC 
-ProductEditDialog.cpp ProductEditDialog.h
+# ProductEditDialog
+qt_add_library(WmsProductEditDialog STATIC
+    ProductEditDialog.cpp ProductEditDialog.h
 )
-target_link_libraries(WmsDialogs PUBLIC 
-Qt6::Widgets WmsDto
+
+# InboundEditDialog
+qt_add_library(WmsInboundEditDialog STATIC
+    InboundEditDialog.cpp InboundEditDialog.h
 )
-target_include_directories(WmsDialogs PUBLIC 
-${CMAKE_CURRENT_SOURCE_DIR}
+
+# 总库
+qt_add_library(WmsDialogs INTERFACE)
+
+target_link_libraries(WmsProductEditDialog PUBLIC
+    Qt6::Widgets WmsDto WmsDomain
+)
+target_link_libraries(WmsInboundEditDialog PUBLIC
+    Qt6::Widgets WmsDto
+    WmsDomain
+)
+
+target_link_libraries(WmsDialogs
+    INTERFACE
+    WmsProductEditDialog
+    WmsInboundEditDialog
+)
+
+target_include_directories(WmsProductEditDialog PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(WmsInboundEditDialog PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )

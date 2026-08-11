@@ -2,6 +2,7 @@
 #pragma once
 #include "ProductDto.h"
 #include "ProductRequests.h"
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -13,7 +14,6 @@
 #include <QString>
 #include <QTextEdit>
 #include <QVBoxLayout>
-#include <QAbstractItemView>
 // 编辑模式
 enum class ProductEditMode {
     Create, // 创建产品
@@ -35,6 +35,18 @@ public:
     void setMode(ProductEditMode mode); // 设置编辑模式
     bool addCategory(const QString& categoryName, quint32 categoryId, QString& errorMessage); // ComboBox添加分类
     bool addUnit(const QString& unitName, quint32 unitId, QString& errorMessage); // ComboBox添加单位
+    // 设置加载中
+    void setOptionsLoading(bool loading);
+    // 信号
+signals:
+    // 分类/单位仅激活复选框状态改变信号
+    void masterdataActiveOnlyChanged(bool activeOnly);
+
+public:
+    quint64 beginMasterDataReload(); // 开始重新加载基础数据
+    bool isCurrentMasterDataReload(quint64 reloadId) const noexcept; // 是否是当前重新加载的基础数据
+    void finishMasterDataReload(quint64 reloadId, bool success); // 完成重新加载基础数据
+    void clearMasterDataOptions(); // 清除基础数据选项
 private:
     QLineEdit* codeEdit_; // 产品编码编辑
     QLineEdit* nameEdit_; // 产品名称编辑
@@ -47,4 +59,7 @@ private:
     QDialogButtonBox* sureButtonBox_; // 确认/取消按钮框
     quint32 editingProductId_ { 0 }; // 编辑的产品ID
     ProductEditMode editMode_ { ProductEditMode::Create }; // 编辑模式(创建/编辑)
+    quint32 pendingCategoryId_ { 0 }; // 待回显分类ID
+    quint32 pendingUnitId_ { 0 }; // 待回显单位ID
+    quint64 masterDataReloadSeq_ { 0 }; // 基础数据重新加载序列号
 };

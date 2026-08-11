@@ -1,6 +1,5 @@
 // 产品DTO
 #pragma once
-#include "qtypes.h"
 #include <QString>
 #include <QVector>
 #include <optional>

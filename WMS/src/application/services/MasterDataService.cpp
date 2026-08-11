@@ -48,7 +48,7 @@ void MasterDataService::listUnits(QObject* owner, bool activeOnly, const UnitLis
         return;
     }
     // 列出单位
-    repository_.listUnits(activeOnly, ownerPtr.data(), [ownerPtr,callback = std::move(callback)](const UnitListResult& result) {
+    repository_.listUnits(activeOnly, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const UnitListResult& result) {
         if (ownerPtr.isNull() || !callback)
             return;
         if (!result.success) {
@@ -95,7 +95,7 @@ void MasterDataService::listCategories(QObject* owner, bool activeOnly, const Ca
                 error.value() });
         return;
     }
-    repository_.listCategories(activeOnly, ownerPtr.data(), [ownerPtr,callback = std::move(callback)](const CategoryListResult& result) {
+    repository_.listCategories(activeOnly, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const CategoryListResult& result) {
         if (ownerPtr.isNull() || !callback)
             return;
         if (!result.success) {
@@ -125,6 +125,53 @@ void MasterDataService::listCategories(QObject* owner, bool activeOnly, const Ca
         callback(CategoryListResult {
             true,
             result.categories,
+            std::nullopt });
+    });
+}
+// 列出所有仓库
+void MasterDataService::listWarehouses(QObject* owner, bool activeOnly, const WarehouseListCallback callback) const
+{
+    QPointer<QObject> ownerPtr(owner);
+    if (ownerPtr.isNull() || !callback)
+        return;
+    if (auto error = authorize(); error.has_value()) {
+        callback(
+            WarehouseListResult {
+                false,
+                std::nullopt,
+                error.value() });
+        return;
+    }
+    repository_.listWarehouses(activeOnly, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const WarehouseListResult& result) {
+        if (ownerPtr.isNull() || !callback)
+            return;
+        if (!result.success) {
+            callback(WarehouseListResult {
+                false,
+                std::nullopt,
+                result.error.has_value() ? result.error.value() : AppError { AppErrorCategory::Validation, AppErrorCode::UnknownError, QStringLiteral("列出仓库失败,未知错误") } });
+            return;
+        }
+        if (result.error.has_value()) {
+            callback(WarehouseListResult {
+                false,
+                std::nullopt,
+                result.error.value() });
+            return;
+        }
+        if (!result.warehouses.has_value()) {
+            callback(WarehouseListResult {
+                false,
+                std::nullopt,
+                AppError {
+                    AppErrorCategory::Validation,
+                    AppErrorCode::UnknownError,
+                    QStringLiteral("列出仓库失败,仓库查找成功但未返回有效数据") } });
+            return;
+        }
+        callback(WarehouseListResult {
+            true,
+            result.warehouses,
             std::nullopt });
     });
 }

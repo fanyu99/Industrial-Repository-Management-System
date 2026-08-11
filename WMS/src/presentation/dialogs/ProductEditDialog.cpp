@@ -1,4 +1,9 @@
 #include "ProductEditDialog.h"
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <QFormLayout>
+#include <QLineEdit>
+#include <QComboBox>
 ProductEditDialog::ProductEditDialog(ProductEditMode mode, QWidget* parent)
     : editMode_ { mode }
     , QDialog(parent)
@@ -54,6 +59,9 @@ ProductEditDialog::ProductEditDialog(ProductEditMode mode, QWidget* parent)
     // 连接信号槽
     connect(sureButtonBox_, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(sureButtonBox_, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    // 连接分类/单位仅激活复选框信号槽
+    connect(masterdataActiveOnlyCheckBox_, &QCheckBox::toggled, this, &ProductEditDialog::masterdataActiveOnlyChanged);
+
     // 设置当前的状态
     setMode(editMode_);
 }
@@ -75,6 +83,9 @@ bool ProductEditDialog::isMasterdataActiveOnly() const noexcept
 // 设置产品信息
 void ProductEditDialog::setProduct(const ProductListItemDto& product)
 {
+    this->editingProductId_ = product.id;
+    pendingCategoryId_ = product.categoryId; // 设置待回显分类ID
+    pendingUnitId_ = product.unitId; // 设置待回显单位ID
     if (!codeEdit_ || !nameEdit_ || !specificationEdit_ || !safetyStockSpin_ || !activeCheckBox_)
         return;
     this->editingProductId_ = product.id; // 设置当前的编辑的产品id
@@ -83,7 +94,7 @@ void ProductEditDialog::setProduct(const ProductListItemDto& product)
     specificationEdit_->setPlainText(product.specification);
     safetyStockSpin_->setValue(product.safetyStock);
     activeCheckBox_->setChecked(product.active);
-    
+
     // TODO: 设置产品分类和单位(从后续服务中加载)
     const int categoryIndex = categoryNameComboBox_->findData(product.categoryId);
     if (categoryIndex >= 0) {
@@ -97,6 +108,9 @@ void ProductEditDialog::setProduct(const ProductListItemDto& product)
 // 校验输入
 bool ProductEditDialog::validateInput(QString& errorMessage) const noexcept
 {
+    if (!errorMessage.isEmpty()) {
+        errorMessage.clear();
+    }
     if (!codeEdit_) {
         errorMessage = QStringLiteral("产品编码框不可用");
         return false;
@@ -124,9 +138,6 @@ bool ProductEditDialog::validateInput(QString& errorMessage) const noexcept
     if (!unitNameComboBox_) {
         errorMessage = QStringLiteral("产品单位框不可用");
         return false;
-    }
-    if (!errorMessage.isEmpty()) {
-        errorMessage.clear();
     }
     if (codeEdit_->text().trimmed().isEmpty()) {
         errorMessage = QStringLiteral("产品编码不能为空!");
@@ -201,7 +212,7 @@ void ProductEditDialog::setMode(ProductEditMode mode)
             activeCheckBox_->setEnabled(true);
         if (masterdataActiveOnlyCheckBox_)
             masterdataActiveOnlyCheckBox_->setEnabled(true);
-        if (categoryNameComboBox_) 
+        if (categoryNameComboBox_)
             categoryNameComboBox_->setEnabled(true);
         if (unitNameComboBox_)
             unitNameComboBox_->setEnabled(true);
@@ -222,7 +233,7 @@ void ProductEditDialog::setMode(ProductEditMode mode)
             activeCheckBox_->setEnabled(true);
         if (masterdataActiveOnlyCheckBox_)
             masterdataActiveOnlyCheckBox_->setEnabled(true);
-        if (categoryNameComboBox_) 
+        if (categoryNameComboBox_)
             categoryNameComboBox_->setEnabled(true);
         if (unitNameComboBox_)
             unitNameComboBox_->setEnabled(true);
@@ -268,7 +279,11 @@ bool ProductEditDialog::addCategory(const QString& categoryName, quint32 categor
         errorMessage = QStringLiteral("分类ID不合法");
         return false;
     }
+    const int index = categoryNameComboBox_->count();
     categoryNameComboBox_->addItem(categoryName, categoryId);
+    if (categoryId == pendingCategoryId_) {
+        categoryNameComboBox_->setCurrentIndex(index);
+    }
     errorMessage.clear();
     return true;
 }
@@ -287,7 +302,66 @@ bool ProductEditDialog::addUnit(const QString& unitName, quint32 unitId, QString
         errorMessage = QStringLiteral("单位ID不合法");
         return false;
     }
+    const int index = unitNameComboBox_->count();
     unitNameComboBox_->addItem(unitName, unitId);
+    if (unitId == pendingUnitId_) {
+        unitNameComboBox_->setCurrentIndex(index);
+    }
     errorMessage.clear();
     return true;
+}
+// 设置加载中(分类/单位禁用)
+void ProductEditDialog::setOptionsLoading(bool loading)
+{
+    if (categoryNameComboBox_)
+        categoryNameComboBox_->setEnabled(!loading);
+    if (unitNameComboBox_)
+        unitNameComboBox_->setEnabled(!loading);
+    // 加载完成后才能确认
+    if (sureButtonBox_) {
+        if (auto* okButton = sureButtonBox_->button(QDialogButtonBox::Ok)) {
+            okButton->setEnabled(!loading);
+        }
+    }
+}
+// 开始重新加载基础数据
+quint64 ProductEditDialog::beginMasterDataReload()
+{
+    ++masterDataReloadSeq_;
+    clearMasterDataOptions();
+    setOptionsLoading(true);
+    return masterDataReloadSeq_;
+}
+
+// 是否是当前重新加载的基础数据
+bool ProductEditDialog::isCurrentMasterDataReload(quint64 reloadId) const noexcept
+{
+    return reloadId == masterDataReloadSeq_;
+}
+// 完成重新加载
+void ProductEditDialog::finishMasterDataReload(quint64 reloadId, bool success)
+{
+    // 以最新的请求为准
+    if (!isCurrentMasterDataReload(reloadId))
+        return;
+    if (categoryNameComboBox_) {
+        categoryNameComboBox_->setEnabled(success);
+    }
+    if (unitNameComboBox_) {
+        unitNameComboBox_->setEnabled(success);
+    }
+    if (sureButtonBox_) {
+        if (auto* okButton = sureButtonBox_->button(QDialogButtonBox::Ok)) {
+            okButton->setEnabled(success);
+        }
+    }
+}
+// 清除基础数据选项
+void ProductEditDialog::clearMasterDataOptions()
+{
+    if (categoryNameComboBox_)
+        categoryNameComboBox_->clear();
+
+    if (unitNameComboBox_)
+        unitNameComboBox_->clear();
 }

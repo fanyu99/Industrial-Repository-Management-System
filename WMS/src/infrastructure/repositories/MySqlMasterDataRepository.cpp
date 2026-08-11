@@ -6,6 +6,8 @@
 int MySqlMasterDataRepository::UnitColumnCount = 4;
 // 分类列数
 int MySqlMasterDataRepository::CategoryColumnCount = 4;
+// 仓库列数
+int MySqlMasterDataRepository::WarehouseColumnCount = 4;
 
 MySqlMasterDataRepository::MySqlMasterDataRepository(DatabaseExecutor& executor, QObject* parent)
     : executor_(executor)
@@ -123,7 +125,7 @@ void MySqlMasterDataRepository::listUnits(bool activeOnly, QObject* owner, const
                                                                     unit.isActive = row[i].toBool();
                                                             }
                                                             // 检查单位数据
-                                                            if (unit.id==0 || unit.code.trimmed().isEmpty() || unit.name.trimmed().isEmpty()) {
+                                                            if (unit.id == 0 || unit.code.trimmed().isEmpty() || unit.name.trimmed().isEmpty()) {
                                                                 callback(UnitListResult {
                                                                     false,
                                                                     std::nullopt,
@@ -226,6 +228,91 @@ void MySqlMasterDataRepository::listCategories(bool activeOnly, QObject* owner, 
                                                         callback(CategoryListResult {
                                                             true,
                                                             std::make_optional<QVector<CategoryDto>>(categories),
+                                                            std::nullopt });
+                                                    } });
+    // 提交任务
+    executor_.submitTask(task);
+}
+// 列出所有仓库
+void MySqlMasterDataRepository::listWarehouses(bool activeOnly, QObject* owner, const WarehouseListCallback callback)
+{
+    QPointer<QObject> ownerPtr(owner);
+    if (ownerPtr.isNull() || !callback)
+        return;
+    // 创建查询语句
+    DatabaseStatement statement;
+    statement.type = StatementType::Query;
+    statement.sql = QStringLiteral("SELECT id,code,name,is_active as isActive FROM warehouses");
+    // 如果仅激活,添加where条件
+    if (activeOnly)
+        statement.sql += QStringLiteral(" WHERE is_active = 1");
+    // 包装任务
+    DatabaseTask task;
+    task.type = DatabaseTaskType::Single;
+    task.statements.append(statement);
+    task.requestId = QUuid::createUuid();
+    // 提交到pending_
+    pending_.insert(task.requestId, PendingRequest { ownerPtr, [ownerPtr, callback = std::move(callback), activeOnly](const DatabaseResult& result) {
+                                                        // 校验参数
+                                                        if (ownerPtr.isNull() || !callback)
+                                                            return;
+                                                        if (!result.isSucceeded()) {
+                                                            callback(WarehouseListResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                mapDatabaseErrorToAppError(result.error) });
+                                                            return;
+                                                        }
+                                                        if (result.statementResults.size() != 1) {
+                                                            callback(WarehouseListResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError {
+                                                                    AppError::repositoryFailure(QStringLiteral("仓库查询失败,查询结果异常")) } });
+                                                            return;
+                                                        }
+                                                        QVector<WarehouseDto> warehouses;
+                                                        const auto& statementResult = result.statementResults[0];
+                                                        for (const auto& row : statementResult.rows) {
+                                                            WarehouseDto warehouse;
+                                                            // 如果行数据的数量与列数不同
+                                                            if (row.size() != statementResult.columns.size() || row.size() != WarehouseColumnCount) {
+                                                                callback(WarehouseListResult {
+                                                                    false,
+                                                                    std::nullopt,
+                                                                    AppError {
+                                                                        AppError::repositoryFailure(QStringLiteral("仓库查询失败,仓库行数据数量异常")) } });
+                                                                return;
+                                                            }
+                                                            for (int i = 0; i < WarehouseColumnCount; ++i) {
+                                                                if (statementResult.columns[i] == "id")
+                                                                    warehouse.id = row[i].toUInt();
+                                                                else if (statementResult.columns[i] == "code")
+                                                                    warehouse.code = row[i].toString();
+                                                                else if (statementResult.columns[i] == "name")
+                                                                    warehouse.name = row[i].toString();
+                                                                else if (statementResult.columns[i] == "isActive")
+                                                                    warehouse.isActive = row[i].toBool();
+                                                            }
+                                                            // 检查仓库数据
+                                                            if (warehouse.id == 0 || warehouse.code.trimmed().isEmpty() || warehouse.name.trimmed().isEmpty()) {
+                                                                callback(WarehouseListResult {
+                                                                    false,
+                                                                    std::nullopt,
+                                                                    AppError {
+                                                                        AppError::repositoryFailure(QStringLiteral("仓库查询失败,仓库数据异常")) } });
+                                                                return;
+                                                            }
+                                                            // 如果仅激活,但仓库未激活,跳过
+                                                            if (activeOnly && !warehouse.isActive)
+                                                                continue;
+                                                            // 添加到仓库列表
+                                                            warehouses.append(warehouse);
+                                                        }
+                                                        // 回调返回列表数据
+                                                        callback(WarehouseListResult {
+                                                            true,
+                                                            std::make_optional<QVector<WarehouseDto>>(warehouses),
                                                             std::nullopt });
                                                     } });
     // 提交任务

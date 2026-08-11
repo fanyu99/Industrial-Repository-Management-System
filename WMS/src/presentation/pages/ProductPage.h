@@ -1,10 +1,10 @@
 // ProductPage 产品页:显示产品信息及相关操作按钮和输入框
 #pragma once
 #include "AppError.h"
+#include "MasterDataService.h"
 #include "ProductEditDialog.h"
 #include "ProductService.h"
 #include "ProductTableModel.h"
-#include "MasterDataService.h"
 #include <QComboBox>
 #include <QItemSelectionModel>
 #include <QPushButton>
@@ -12,7 +12,7 @@
 #include <QTableView>
 #include <optional>
 // 设置当前页的状态
-enum class PageState {
+enum class ProductPageState {
     Idle, // 空闲
     Loading, // 加载中
     Ready, // 就绪(有数据)
@@ -27,9 +27,9 @@ public:
     ~ProductPage() = default;
 
     void reloadCurrentPage(); // 重新加载当前页面(在更新数据后调用,刷新页面显示,重新查询 > 乐观刷新)
-    void setPageState(PageState state); // 设置当前页的状态
+    void setPageState(ProductPageState state); // 设置当前页的状态
     // 当前页状态(供测试/外部观察)
-    [[nodiscard]] PageState currentPageState() const noexcept { return currentPageState_; }
+    [[nodiscard]] ProductPageState currentPageState() const noexcept { return currentPageState_; }
     void showOperationError(const AppError& error); // 显示操作错误消息
     void showErrorMessage(const QString& message); // 显示错误消息
     void showInformationMessage(const QString& message); // 显示信息消息
@@ -49,12 +49,12 @@ private:
     std::optional<AuthenticatedUser> currentUser_; // 当前会话的用户
     ProductFilter currentFilter_; // 筛选条件
     PageRequest currentRequest_; // 当前分页请求参数
-    PageState currentPageState_ { PageState::Idle }; // 当前页的状态
+    ProductPageState currentPageState_ { ProductPageState::Idle }; // 当前页的状态
     QTableView* tableView_; // 表格视图
     QItemSelectionModel* selectionModel_; // 选中模型
     // 获取当前选中的产品
     std::optional<ProductListItemDto> selectedProductDto() const;
-    void loadProductDialogOptions(ProductEditDialog& dialog,bool activeOnly = true); // 将分类/单位服务加载到产品编辑对话框
+    void loadProductDialogOptions(ProductEditDialog& dialog, bool activeOnly = true); // 将分类/单位服务加载到产品编辑对话框
     void updateActions(); // 更新操作按钮的状态
     QString errorToTitle(const AppError& error) const; // 将错误映射为标题
 };

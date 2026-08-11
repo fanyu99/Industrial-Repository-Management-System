@@ -1,11 +1,12 @@
 #include "ProductPage.h"
 #include <QAbstractItemModel>
-#include <QEventLoop>
 #include <QHBoxLayout>
 #include <QMessageBox>
+#include <QPointer>
 #include <QStringLiteral>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <memory>
 ProductPage::ProductPage(ProductService* ps, MasterDataService* masterDataService, ProductTableModel* tableModel, QWidget* parent)
     : QWidget(parent)
     , productService_ { ps }
@@ -51,6 +52,8 @@ ProductPage::ProductPage(ProductService* ps, MasterDataService* masterDataServic
     connect(reloadBtn, &QPushButton::clicked, this, &ProductPage::reloadCurrentPage);
     if (selectionModel_)
         connect(selectionModel_, &QItemSelectionModel::selectionChanged, this, [this]() { updateActions(); }); // 根据选中修改按钮状态
+
+    reloadCurrentPage();
     updateActions();
 }
 // 将错误映射为标题
@@ -95,7 +98,7 @@ void ProductPage::showInformationMessage(const QString& message)
         QMessageBox::information(this, QStringLiteral("信息"), message);
 }
 // 设置当前页的状态,并显示消息
-void ProductPage::setPageState(PageState state)
+void ProductPage::setPageState(ProductPageState state)
 {
     currentPageState_ = state;
     updateActions(); // 更新按钮状态
@@ -106,16 +109,16 @@ void ProductPage::reloadCurrentPage()
 
     const auto requestSeq = ++listRequestSeq_; // 当前的请求序列号
     if (!productService_) {
-        setPageState(PageState::Error);
+        setPageState(ProductPageState::Error);
         showErrorMessage(QStringLiteral("产品服务不可用"));
         return;
     }
     if (!tableModel_) {
-        setPageState(PageState::Error);
+        setPageState(ProductPageState::Error);
         showErrorMessage(QStringLiteral("表格模型不可用"));
         return;
     }
-    setPageState(PageState::Loading);
+    setPageState(ProductPageState::Loading);
     // 采用重新查询方式刷新页面数据
     // 使用ProductService来进行获取产品列表(刷新当前页面)
     productService_->listProducts(
@@ -129,7 +132,7 @@ void ProductPage::reloadCurrentPage()
             }
             // 如果失败,更改状态并显示错误
             if (!result.success) {
-                setPageState(PageState::Error);
+                setPageState(ProductPageState::Error);
                 if (result.error.has_value())
                     showOperationError(result.error.value());
                 else
@@ -139,10 +142,10 @@ void ProductPage::reloadCurrentPage()
             // 设置页面
             tableModel_->setPage(result.page);
             if (result.page.items.isEmpty()) {
-                setPageState(PageState::Empty);
+                setPageState(ProductPageState::Empty);
                 return;
             } else {
-                setPageState(PageState::Ready);
+                setPageState(ProductPageState::Ready);
             }
         });
 }
@@ -172,35 +175,70 @@ std::optional<ProductListItemDto> ProductPage::selectedProductDto() const
 void ProductPage::loadProductDialogOptions(ProductEditDialog& dialog, bool activeOnly)
 {
     if (!masterDataService_) {
-        showErrorMessage(QStringLiteral("基础数据服务不可用!"));
+        showErrorMessage(QStringLiteral("基础数据(分类/单位)服务不可用"));
         return;
     }
-    QEventLoop eventloop; // 等待两个加载完成后再退出
-    int readyCount = 0;
-    auto Ready = [&]() {
-        if(++readyCount==2)eventloop.quit(); };
-    masterDataService_->listCategories(&dialog, activeOnly, [&](const CategoryListResult& result) {
-        if (result.success && result.categories.has_value()) {
+    // 设置加载中,禁用分类/单位,等待加载完成
+    
+    auto pending = std::make_shared<int>(2); // 待完成
+    auto failed = std::make_shared<bool>(false); // 失败
+    const quint64 reloadId = dialog.beginMasterDataReload(); // 序列号
+    QPointer<ProductEditDialog> dialogPtr(&dialog);
+    auto finishOne = [this, dialogPtr, pending, failed, reloadId]() {
+        // 以最新的序列号为准
+        if (!dialogPtr||!dialogPtr->isCurrentMasterDataReload(reloadId))
+            return;
+        --(*pending);
+        if (*pending != 0)
+            return;
+        if (*failed) {
+            dialogPtr->finishMasterDataReload(reloadId,false);
+            showErrorMessage(QStringLiteral("基础数据(分类/单位)加载失败!请重试"));
+            return;
+        }
+        dialogPtr->setOptionsLoading(false);
+        dialogPtr->finishMasterDataReload(reloadId,true);
+    };
+    masterDataService_->listCategories(
+        &dialog,
+        activeOnly,
+        [this, dialogPtr, failed, finishOne](const CategoryListResult& result) {
+            if (!dialogPtr)
+                return;
+            if (!result.success) {
+                *failed = true;
+                finishOne();
+                return;
+            }
+            QString errorMessage;
             for (const auto& category : result.categories.value()) {
-                QString error;
-                dialog.addCategory(category.name, category.id, error);
+                if (!dialogPtr->addCategory(category.name, category.id, errorMessage)) {
+                    *failed = true;
+                    break;
+                }
             }
-        }
-
-        Ready();
-    });
-    masterDataService_->listUnits(&dialog, activeOnly, [&](const UnitListResult& result) {
-        if (result.success && result.units.has_value()) {
+            finishOne();
+        });
+    masterDataService_->listUnits(
+        &dialog,
+        activeOnly,
+        [this, dialogPtr, failed, finishOne](const UnitListResult& result) {
+            if (!dialogPtr)
+                return;
+            if (!result.success) {
+                *failed = true;
+                finishOne();
+                return;
+            }
+            QString errorMessage;
             for (const auto& unit : result.units.value()) {
-                QString error;
-                dialog.addUnit(unit.name, unit.id, error);
+                if (!dialogPtr->addUnit(unit.name, unit.id, errorMessage)) {
+                    *failed = true;
+                    break;
+                }
             }
-        }
-
-        Ready();
-    });
-
-    eventloop.exec(); // 等待分类/单位加载加载完成
+            finishOne();
+        });
 }
 // 槽函数
 
@@ -222,7 +260,7 @@ void ProductPage::onCreateClicked()
         return;
     }
     ProductEditDialog dialog(ProductEditMode::Create, this);
-
+     connect(&dialog,&ProductEditDialog::masterdataActiveOnlyChanged,&dialog,[this,&dialog](bool activeOnly){loadProductDialogOptions(dialog,activeOnly);});
     // 从分类/单位服务中加载
     loadProductDialogOptions(dialog, dialog.isMasterdataActiveOnly());
     if (dialog.exec() != QDialog::Accepted)
@@ -245,14 +283,14 @@ void ProductPage::onCreateClicked()
     product.safetyStock = request.safetyStock;
     product.active = request.active;
     // 创建
-    setPageState(PageState::Loading);
+    setPageState(ProductPageState::Loading);
     productService_->createProduct(
         product,
         this,
         // 回调函数,刷新页面
         [this](const ProductOperationResult& result) {
             if (!result.success) {
-                setPageState(PageState::Error);
+                setPageState(ProductPageState::Error);
                 if (result.error.has_value())
                     showOperationError(result.error.value());
                 else
@@ -282,7 +320,7 @@ void ProductPage::onEditClicked()
     }
     // 校验当前的选中
     if (!selectionModel_) {
-        showErrorMessage(QStringLiteral("表格模型不可用!"));
+        showErrorMessage(QStringLiteral("选择模型不可用!"));
         return;
     }
     if (!tableView_) {
@@ -298,9 +336,10 @@ void ProductPage::onEditClicked()
 
     ProductEditDialog dialog(ProductEditMode::Edit, this);
 
+    dialog.setProduct(productDto.value());
+    connect(&dialog, &ProductEditDialog::masterdataActiveOnlyChanged, &dialog, [this, &dialog](bool activeOnly) { loadProductDialogOptions(dialog, activeOnly); });
     // 加载分类/单位
     loadProductDialogOptions(dialog, dialog.isMasterdataActiveOnly());
-    dialog.setProduct(productDto.value());
     if (dialog.exec() != QDialog::Accepted)
         return;
 
@@ -322,14 +361,14 @@ void ProductPage::onEditClicked()
     product.safetyStock = request.safetyStock;
     product.active = request.active;
     // 更新
-    setPageState(PageState::Loading);
+    setPageState(ProductPageState::Loading);
     productService_->updateProduct(
         product,
         this,
         // 回调函数,刷新页面
         [this](const ProductOperationResult& result) {
             if (!result.success) {
-                setPageState(PageState::Error);
+                setPageState(ProductPageState::Error);
                 if (result.error.has_value())
                     showOperationError(result.error.value());
                 else
@@ -377,7 +416,7 @@ void ProductPage::onSetActiveClicked()
         return;
     }
     // 设置产品状态
-    setPageState(PageState::Loading);
+    setPageState(ProductPageState::Loading);
     productService_->setProductActive(
         productDto->id,
         oppositeActive,
@@ -385,7 +424,7 @@ void ProductPage::onSetActiveClicked()
         // 回调函数,刷新页面
         [this, oppositeActive](std::optional<AppError> error) {
             if (error.has_value()) {
-                setPageState(PageState::Error);
+                setPageState(ProductPageState::Error);
                 showOperationError(error.value());
                 return;
             }
@@ -396,7 +435,7 @@ void ProductPage::onSetActiveClicked()
 // 更新操作按钮的状态
 void ProductPage::updateActions()
 {
-    bool loading = (currentPageState_ == PageState::Loading);
+    bool loading = (currentPageState_ == ProductPageState::Loading);
     bool hasSelection = selectedProductDto().has_value();
     bool canCreate = productService_ && productService_->hasPermission(Permission::CreateProducts);
     bool canEdit = productService_ && productService_->hasPermission(Permission::EditProducts);
@@ -404,6 +443,6 @@ void ProductPage::updateActions()
     // 设置按钮的状态
     createBtn->setEnabled(!loading && canCreate);
     reloadBtn->setEnabled(!loading);
-    editBtn->setEnabled(!loading && hasSelection && canEdit && currentPageState_ == PageState::Ready);
-    setActiveBtn->setEnabled(!loading && hasSelection && canDisable && currentPageState_ == PageState::Ready);
+    editBtn->setEnabled(!loading && hasSelection && canEdit && currentPageState_ == ProductPageState::Ready);
+    setActiveBtn->setEnabled(!loading && hasSelection && canDisable && currentPageState_ == ProductPageState::Ready);
 }
