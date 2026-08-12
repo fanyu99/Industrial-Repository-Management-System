@@ -45,6 +45,10 @@ ProductPage::ProductPage(ProductService* ps, MasterDataService* masterDataServic
     mainLayout->addLayout(buttonLayout);
     // 添加表格视图到布局
     mainLayout->addWidget(tableView_);
+    // 分页导航
+    pageNavigator_ = new PageNavigator(this);
+    pageNavigator_->setObjectName(QStringLiteral("ProductPage_pageNavigator"));
+    mainLayout->addWidget(pageNavigator_);
     // 连接信号槽
     connect(createBtn, &QPushButton::clicked, this, &ProductPage::onCreateClicked);
     connect(editBtn, &QPushButton::clicked, this, &ProductPage::onEditClicked);
@@ -52,6 +56,11 @@ ProductPage::ProductPage(ProductService* ps, MasterDataService* masterDataServic
     connect(reloadBtn, &QPushButton::clicked, this, &ProductPage::reloadCurrentPage);
     if (selectionModel_)
         connect(selectionModel_, &QItemSelectionModel::selectionChanged, this, [this]() { updateActions(); }); // 根据选中修改按钮状态
+    // 转页后重新加载页面
+    connect(pageNavigator_, &PageNavigator::pageChanged, this, [this](int page) {
+        currentRequest_.page = page;
+        reloadCurrentPage();
+    });
 
     reloadCurrentPage();
     updateActions();
@@ -141,6 +150,7 @@ void ProductPage::reloadCurrentPage()
             }
             // 设置页面
             tableModel_->setPage(result.page);
+            pageNavigator_->updatePageInfo(result.page.page, tableModel_->totalPages());
             if (result.page.items.isEmpty()) {
                 setPageState(ProductPageState::Empty);
                 return;
@@ -179,26 +189,28 @@ void ProductPage::loadProductDialogOptions(ProductEditDialog& dialog, bool activ
         return;
     }
     // 设置加载中,禁用分类/单位,等待加载完成
-    
+
     auto pending = std::make_shared<int>(2); // 待完成
     auto failed = std::make_shared<bool>(false); // 失败
     const quint64 reloadId = dialog.beginMasterDataReload(); // 序列号
     QPointer<ProductEditDialog> dialogPtr(&dialog);
+    // 完成一个加载任务
     auto finishOne = [this, dialogPtr, pending, failed, reloadId]() {
         // 以最新的序列号为准
-        if (!dialogPtr||!dialogPtr->isCurrentMasterDataReload(reloadId))
+        if (!dialogPtr || !dialogPtr->isCurrentMasterDataReload(reloadId))
             return;
         --(*pending);
         if (*pending != 0)
             return;
         if (*failed) {
-            dialogPtr->finishMasterDataReload(reloadId,false);
+            dialogPtr->finishMasterDataReload(reloadId, false);
             showErrorMessage(QStringLiteral("基础数据(分类/单位)加载失败!请重试"));
             return;
         }
         dialogPtr->setOptionsLoading(false);
-        dialogPtr->finishMasterDataReload(reloadId,true);
+        dialogPtr->finishMasterDataReload(reloadId, true);
     };
+    // 加载分类/单位
     masterDataService_->listCategories(
         &dialog,
         activeOnly,
@@ -260,7 +272,7 @@ void ProductPage::onCreateClicked()
         return;
     }
     ProductEditDialog dialog(ProductEditMode::Create, this);
-     connect(&dialog,&ProductEditDialog::masterdataActiveOnlyChanged,&dialog,[this,&dialog](bool activeOnly){loadProductDialogOptions(dialog,activeOnly);});
+    connect(&dialog, &ProductEditDialog::masterdataActiveOnlyChanged, &dialog, [this, &dialog](bool activeOnly) { loadProductDialogOptions(dialog, activeOnly); });
     // 从分类/单位服务中加载
     loadProductDialogOptions(dialog, dialog.isMasterdataActiveOnly());
     if (dialog.exec() != QDialog::Accepted)
@@ -336,8 +348,8 @@ void ProductPage::onEditClicked()
 
     ProductEditDialog dialog(ProductEditMode::Edit, this);
 
-    dialog.setProduct(productDto.value());
-    connect(&dialog, &ProductEditDialog::masterdataActiveOnlyChanged, &dialog, [this, &dialog](bool activeOnly) { loadProductDialogOptions(dialog, activeOnly); });
+    dialog.setProduct(productDto.value()); // 先进行设置产品,使分类/单位能够正确回显
+    connect(&dialog, &ProductEditDialog::masterdataActiveOnlyChanged, &dialog, [this, &dialog](bool activeOnly) { loadProductDialogOptions(dialog, activeOnly); }); // 信号槽: 激活状态改变,重新加载分类/单位
     // 加载分类/单位
     loadProductDialogOptions(dialog, dialog.isMasterdataActiveOnly());
     if (dialog.exec() != QDialog::Accepted)

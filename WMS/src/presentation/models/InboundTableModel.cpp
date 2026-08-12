@@ -1,6 +1,4 @@
 #include "InboundTableModel.h"
-#include "qabstractitemmodel.h"
-#include "qnamespace.h"
 
 InboundTableModel::InboundTableModel(QObject* parent)
     : QAbstractTableModel(parent)
@@ -61,9 +59,10 @@ QVariant InboundTableModel::data(const QModelIndex& index, int role) const
         case Column::UpdateAtColumn:
             return order.updatedAt;
         case Column::ConfirmAtColumn:
-            if (order.confirmedAt.has_value()&& order.status == InboundOrderStatus::Confirmed)
+            if (order.confirmedAt.has_value() && order.status == InboundOrderStatus::Confirmed)
                 return order.confirmedAt.value();
-            else return {};
+            else
+                return {};
         default:
             return {};
         }
@@ -112,7 +111,7 @@ QVariant InboundTableModel::headerData(int section, Qt::Orientation orientation,
 void InboundTableModel::clear()
 {
     beginResetModel();
-    page_.items = {};
+    page_ = {};
     endResetModel();
 }
 // 获取指定行的入库订单
@@ -157,4 +156,9 @@ int InboundTableModel::page() const noexcept
 int InboundTableModel::pageSize() const noexcept
 {
     return page_.pageSize;
+}
+// 获取总页数
+int InboundTableModel::totalPages() const noexcept
+{
+    return (total() + pageSize() - 1) / pageSize();
 }

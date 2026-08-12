@@ -16,7 +16,7 @@ int ProductTableModel::columnCount(const QModelIndex& parent) const
 {
     if (parent.isValid())
         return 0;
-    return static_cast<int>(Column::CountColumn); 
+    return static_cast<int>(Column::CountColumn);
 }
 // 返回索引的数据
 QVariant ProductTableModel::data(const QModelIndex& index, int role) const
@@ -117,4 +117,9 @@ int ProductTableModel::page() const noexcept
 int ProductTableModel::pageSize() const noexcept
 {
     return page_.pageSize;
+}
+// 获取总页数
+int ProductTableModel::totalPages() const noexcept
+{
+    return (total() + pageSize() - 1) / pageSize();
 }

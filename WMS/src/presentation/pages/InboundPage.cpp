@@ -1,15 +1,22 @@
 #include "InboundPage.h"
+#include <QAbstractItemView>
+#include <QHBoxLayout>
 #include <QMessageBox>
 #include <QPointer>
-#include <QHBoxLayout>
+#include <QTableView>
 #include <QVBoxLayout>
-#include<QAbstractItemView>
+#include <QPushButton>
+
 InboundPage::InboundPage(InboundService* inboundService, MasterDataService* masterDataService, InboundTableModel* tableModel, QWidget* parent)
     : QWidget(parent)
     , inboundService_(inboundService)
     , masterDataService_(masterDataService)
     , tableModel_(tableModel)
 {
+    if (!inboundService_ || !masterDataService_ || !tableModel_) {
+        showErrorMessage(QStringLiteral("入库订单页初始化失败,相关服务/模型异常"));
+        return;
+    }
     setWindowTitle(QStringLiteral("入库订单页"));
     if (inboundService_) {
         currentUser_ = inboundService_->currentUser();
@@ -26,17 +33,23 @@ InboundPage::InboundPage(InboundService* inboundService, MasterDataService* mast
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     //  按钮布局
     QHBoxLayout* buttonLayout = new QHBoxLayout();
-    createBtn = new QPushButton(QStringLiteral("创建入库订单"));
-    confirmBtn = new QPushButton(QStringLiteral("确认入库订单"));
-    reloadBtn = new QPushButton(QStringLiteral("重新加载"));
+    createBtn = new QPushButton(QStringLiteral("创建入库订单"), this);
+    confirmBtn = new QPushButton(QStringLiteral("确认入库订单"), this);
+    reloadBtn = new QPushButton(QStringLiteral("重新加载"), this);
     createBtn->setObjectName(QStringLiteral("InboundPage_createBtn"));
     confirmBtn->setObjectName(QStringLiteral("InboundPage_confirmBtn"));
     reloadBtn->setObjectName(QStringLiteral("InboundPage_reloadBtn"));
+    // 分页导航
+    pageNavigator_ = new PageNavigator(this);
+    pageNavigator_->setObjectName(QStringLiteral("InboundPage_pageNavigator"));
 
+    // 添加布局和组件
     buttonLayout->addWidget(createBtn);
     buttonLayout->addWidget(confirmBtn);
     buttonLayout->addWidget(reloadBtn);
     mainLayout->addLayout(buttonLayout);
+    mainLayout->addWidget(tableView_);
+    mainLayout->addWidget(pageNavigator_);
     // 连接信号槽
     connect(createBtn, &QPushButton::clicked, this, &InboundPage::onCreateClicked);
     connect(confirmBtn, &QPushButton::clicked, this, &InboundPage::onConfirmClicked);
@@ -44,6 +57,11 @@ InboundPage::InboundPage(InboundService* inboundService, MasterDataService* mast
     if (selectionModel_) {
         connect(selectionModel_, &QItemSelectionModel::selectionChanged, this, [this]() { updateActions(); });
     }
+    // 转页后重新加载页面
+    connect(pageNavigator_, &PageNavigator::pageChanged, this, [this](int page) {
+        currentRequest_.page = page;
+        reloadCurrentPage();
+    }); // 翻页,重新加载页面
 
     reloadCurrentPage();
     updateActions();
@@ -98,6 +116,7 @@ void InboundPage::setPageState(InboundPageState state)
 // 重新加载当前页面(最新请求为准)
 void InboundPage::reloadCurrentPage()
 {
+
     // 请求+1
     const auto requestSeq = ++listRequestSeq_;
     // 校验
@@ -126,8 +145,10 @@ void InboundPage::reloadCurrentPage()
 
             return;
         }
+
         // 设置页面
         tableModel_->setPage(result.page);
+        pageNavigator_->updatePageInfo(result.page.page, tableModel_->totalPages()); // 更新信息
         if (result.page.items.isEmpty()) {
             setPageState(InboundPageState::Empty);
             return;
@@ -163,32 +184,32 @@ void InboundPage::loadInboundDialogOptions(InboundEditDialog& dialog, bool isAct
     }
     const quint64 reloadId = dialog.beginWarehouseReload();
 
-        QPointer<InboundEditDialog> dialogPtr(&dialog);
-        masterDataService_->listWarehouses(
-            &dialog,
-            isActiveOnly,
-            [this, dialogPtr, reloadId](const WarehouseListResult& result) {
-                if (!dialogPtr || !dialogPtr->isCurrentWarehouseReload(reloadId)) {
-                    return;
-                }
+    QPointer<InboundEditDialog> dialogPtr(&dialog);
+    masterDataService_->listWarehouses(
+        &dialog,
+        isActiveOnly,
+        [this, dialogPtr, reloadId](const WarehouseListResult& result) {
+            if (!dialogPtr || !dialogPtr->isCurrentWarehouseReload(reloadId)) {
+                return;
+            }
 
-                if (!result.success) {
+            if (!result.success) {
+                dialogPtr->finishWarehouseReload(reloadId, false);
+                showErrorMessage(QStringLiteral("加载仓库数据失败"));
+                return;
+            }
+
+            QString errorMessage;
+            for (const auto& warehouse : result.warehouses.value()) {
+                if (!dialogPtr->addWarehouse(warehouse.name, warehouse.id, errorMessage)) {
                     dialogPtr->finishWarehouseReload(reloadId, false);
-                    showErrorMessage(QStringLiteral("加载仓库数据失败"));
+                    showErrorMessage(errorMessage);
                     return;
                 }
+            }
 
-                QString errorMessage;
-                for (const auto& warehouse : result.warehouses.value()) {
-                    if (!dialogPtr->addWarehouse(warehouse.name, warehouse.id, errorMessage)) {
-                        dialogPtr->finishWarehouseReload(reloadId, false);
-                        showErrorMessage(errorMessage);
-                        return;
-                    }
-                }
-
-                dialogPtr->finishWarehouseReload(reloadId, true);
-            });
+            dialogPtr->finishWarehouseReload(reloadId, true);
+        });
 }
 // 槽函数
 
@@ -258,10 +279,8 @@ void InboundPage::onConfirmClicked()
     const auto answer = QMessageBox::question(
         this,
         QStringLiteral("确认入库"),
-        QStringLiteral("确认入库订单 %1 吗?\n供应商: %2\n仓库: %3")
-            .arg(orderDto.value().orderNo)
-            .arg(orderDto.value().supplier)
-            .arg(orderDto.value().warehouseName));
+        QStringLiteral("确认入库订单 %1 吗?\n供应商: %2\n仓库: %3\n").arg(orderDto.value().orderNo).arg(orderDto.value().supplier).arg(orderDto.value().warehouseName),
+        QStringLiteral("订单编号:%1\n").arg(orderDto.value().orderNo));
     if (answer != QMessageBox::Yes)
         return;
     setPageState(InboundPageState::Loading); // 设置加载状态,防止重复点击

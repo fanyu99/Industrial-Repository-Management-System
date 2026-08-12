@@ -2,6 +2,7 @@
 #pragma once
 #include "AppError.h"
 #include "MasterDataService.h"
+#include "PageNavigator.h"
 #include "ProductEditDialog.h"
 #include "ProductService.h"
 #include "ProductTableModel.h"
@@ -43,6 +44,7 @@ private:
     QPushButton* editBtn; // 编辑产品按钮
     QPushButton* setActiveBtn; // 设置产品状态按钮(启用/禁用)
     QPushButton* reloadBtn; // 重新加载按钮
+    PageNavigator* pageNavigator_; // 分页导航
     ProductService* productService_; // 产品服务
     MasterDataService* masterDataService_; // 仓库基础数据服务
     ProductTableModel* tableModel_; // 产品表格模型

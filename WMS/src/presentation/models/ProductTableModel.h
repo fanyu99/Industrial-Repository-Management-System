@@ -37,6 +37,7 @@ public:
     int total() const noexcept;
     int page() const noexcept;
     int pageSize() const noexcept;
+    int totalPages() const noexcept;
 
 private:
     PageResult<ProductListItemDto> page_; // 当前页,存储分页信息

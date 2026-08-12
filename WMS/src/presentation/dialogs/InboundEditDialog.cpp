@@ -16,34 +16,37 @@ InboundEditDialog::InboundEditDialog(InboundEditMode editMode, QWidget* parent)
     QFormLayout* formLayout = new QFormLayout();
     // 订单编号
     orderNoEdit_ = new QLineEdit(this);
-    formLayout->addRow(QStringLiteral("入库订单编号"), orderNoEdit_);
+    orderNoEdit_->setPlaceholderText(QStringLiteral("自动生成"));
     orderNoEdit_->setReadOnly(true); // 只读(创建时自动生成)
+    formLayout->addRow(QStringLiteral("入库订单编号"), orderNoEdit_);
     // 1.供应商
     supplierEdit_ = new QLineEdit(this);
     supplierEdit_->setPlaceholderText(QStringLiteral("请输入供应商"));
     formLayout->addRow(QStringLiteral("供应商"), supplierEdit_);
     // 2.操作人
     operatorNameEdit_ = new QLineEdit(this);
+    operatorNameEdit_->setPlaceholderText(QStringLiteral("当前用户"));
     operatorNameEdit_->setReadOnly(true); // 只读
     formLayout->addRow(QStringLiteral("操作人"), operatorNameEdit_);
     // 3.仓库
     warehouseComboBox_ = new QComboBox(this);
     formLayout->addRow(QStringLiteral("仓库:"), warehouseComboBox_);
     // 4.仅显示活跃仓库复选框
-    masterdataActiveOnlyCheckBox_ = new QCheckBox(QStringLiteral("仅显示活跃仓库"));
+    masterdataActiveOnlyCheckBox_ = new QCheckBox(QStringLiteral("仅显示活跃仓库"),this);
     masterdataActiveOnlyCheckBox_->setChecked(true);
     formLayout->addRow(QStringLiteral("仅显示活跃仓库"), masterdataActiveOnlyCheckBox_);
     // 5.明细数
-    lineCountEdit_ = new QLineEdit(QStringLiteral("0"));
+    lineCountEdit_ = new QLineEdit(QStringLiteral("0"),this);
     lineCountEdit_->setReadOnly(true); // 自动计算
     formLayout->addRow(QStringLiteral("明细数"), lineCountEdit_);
     // 6.总数量
-    totalQuantityEdit_ = new QLineEdit(QStringLiteral("0"));
+    totalQuantityEdit_ = new QLineEdit(QStringLiteral("0"),this);
     totalQuantityEdit_->setReadOnly(true); // 自动计算
     formLayout->addRow(QStringLiteral("总数量"), totalQuantityEdit_);
     // 7.确认按钮框
     sureButtonBox_ = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    mainLayout->addWidget(sureButtonBox_);
+    mainLayout->addWidget(sureButtonBox_); // 添加确认按钮
+    mainLayout->addLayout(formLayout); // 添加布局
     // 连接信号槽
     connect(sureButtonBox_, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(sureButtonBox_, &QDialogButtonBox::rejected, this, &QDialog::reject);

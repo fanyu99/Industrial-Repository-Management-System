@@ -41,9 +41,10 @@ public:
     quint32 orderIdAt(int row) const; // 获取对应行的入库订单ID
     quint32 operatorIdAt(int row) const; // 获取对应行的入库订单操作人ID
     quint32 warehouseIdAt(int row) const; // 获取对应行的入库订单仓库ID
-    int total() const noexcept;
-    int page() const noexcept;
+    int total() const noexcept; // 总记录数
+    int page() const noexcept; // 当前页码
     int pageSize() const noexcept;
+    int totalPages() const noexcept; // 总页数
 
 private:
     PageResult<InboundOrderListItemDto> page_; // 当前页,入库订单

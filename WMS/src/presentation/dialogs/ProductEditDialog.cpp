@@ -324,16 +324,16 @@ void ProductEditDialog::setOptionsLoading(bool loading)
         }
     }
 }
-// 开始重新加载基础数据
+// 开始重新加载基础数据,返回序列号
 quint64 ProductEditDialog::beginMasterDataReload()
 {
-    ++masterDataReloadSeq_;
-    clearMasterDataOptions();
-    setOptionsLoading(true);
-    return masterDataReloadSeq_;
+    ++masterDataReloadSeq_;// 序列号++
+    clearMasterDataOptions(); // 清空选项
+    setOptionsLoading(true); // 设置加载
+    return masterDataReloadSeq_; 
 }
 
-// 是否是当前重新加载的基础数据
+// 是否是最新的重新加载的基础数据
 bool ProductEditDialog::isCurrentMasterDataReload(quint64 reloadId) const noexcept
 {
     return reloadId == masterDataReloadSeq_;

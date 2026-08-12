@@ -1,5 +1,6 @@
 #pragma once
 #include "AppError.h"
+#include "PageNavigator.h"
 #include "InboundEditDialog.h"
 #include "InboundService.h"
 #include "InboundTableModel.h"
@@ -38,6 +39,7 @@ private:
     QPushButton* createBtn; // 创建草稿按钮
     QPushButton* confirmBtn; // 确认按钮
     QPushButton* reloadBtn; // 重新加载按钮
+    PageNavigator* pageNavigator_; // 分页导航
 
     InboundService* inboundService_;
     MasterDataService* masterDataService_;
