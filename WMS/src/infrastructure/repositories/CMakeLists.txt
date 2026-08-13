@@ -44,6 +44,20 @@ target_include_directories(WmsInboundRepository PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# 出库repository
+qt_add_library(WmsOutboundRepository STATIC
+    MySqlOutboundRepository.cpp
+    MySqlOutboundRepository.h
+)
+target_link_libraries(WmsOutboundRepository PRIVATE
+    WmsDatabase
+    WmsOutboundServices
+    WmsDto
+)
+target_include_directories(WmsOutboundRepository PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # 审计日志repository
 qt_add_library(WmsAuditLogRepository STATIC
     MySqlAuditLogRepository.h
@@ -79,6 +93,7 @@ target_link_libraries(
     WmsAuthRepository
     WmsProductRepository
     WmsInboundRepository
+    WmsOutboundRepository
     WmsAuditLogRepository
     WmsMasterDataRepository
 )

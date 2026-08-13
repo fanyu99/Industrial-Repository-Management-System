@@ -9,10 +9,10 @@ struct Product {
     quint32 unitId { 0 }; // 单位id
     QString specification; // 规格
     int safetyStock { 0 }; // 安全库存
-    bool active { true}; // 是否激活
+    bool active { true }; // 是否激活
     // 检查产品对象是否合法
     [[nodiscard]] bool isValid() const
     {
-        return !code.trimmed().isEmpty() && !name.trimmed().isEmpty() && categoryId > 0 && unitId > 0  && safetyStock >= 0;
+        return !name.trimmed().isEmpty() && categoryId > 0 && unitId > 0 && safetyStock >= 0;
     }
 };

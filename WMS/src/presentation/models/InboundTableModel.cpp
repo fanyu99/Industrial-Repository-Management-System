@@ -55,12 +55,12 @@ QVariant InboundTableModel::data(const QModelIndex& index, int role) const
         case Column::TotalQuantityColumn:
             return order.totalQuantity;
         case Column::CreateAtColumn:
-            return order.createdAt;
+            return order.createdAt.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
         case Column::UpdateAtColumn:
-            return order.updatedAt;
+            return order.updatedAt.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
         case Column::ConfirmAtColumn:
             if (order.confirmedAt.has_value() && order.status == InboundOrderStatus::Confirmed)
-                return order.confirmedAt.value();
+                return order.confirmedAt.value().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
             else
                 return {};
         default:

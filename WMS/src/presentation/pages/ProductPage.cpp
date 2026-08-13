@@ -1,6 +1,7 @@
 #include "ProductPage.h"
 #include <QAbstractItemModel>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QMessageBox>
 #include <QPointer>
 #include <QStringLiteral>
@@ -24,6 +25,15 @@ ProductPage::ProductPage(ProductService* ps, MasterDataService* masterDataServic
     tableView_->setModel(tableModel_);
     tableView_->setSelectionBehavior(QAbstractItemView::SelectRows); // 整行选
     tableView_->setSelectionMode(QAbstractItemView::SingleSelection); // 单选
+    tableView_->horizontalHeader()->setStretchLastSection(true);
+    tableView_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    tableView_->setColumnWidth(static_cast<int>(ProductTableModel::Column::CodeColumn), 100);
+    tableView_->setColumnWidth(static_cast<int>(ProductTableModel::Column::NameColumn), 120);
+    tableView_->setColumnWidth(static_cast<int>(ProductTableModel::Column::CategoryColumn), 80);
+    tableView_->setColumnWidth(static_cast<int>(ProductTableModel::Column::UnitColumn), 60);
+    tableView_->setColumnWidth(static_cast<int>(ProductTableModel::Column::SpecificationColumn), 150);
+    tableView_->setColumnWidth(static_cast<int>(ProductTableModel::Column::SafetyStockColumn), 80);
+    tableView_->setColumnWidth(static_cast<int>(ProductTableModel::Column::ActiveColumn), 60);
     selectionModel_ = tableView_->selectionModel();
     // 总布局
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
@@ -110,6 +120,8 @@ void ProductPage::showInformationMessage(const QString& message)
 void ProductPage::setPageState(ProductPageState state)
 {
     currentPageState_ = state;
+    if(pageNavigator_)
+        pageNavigator_->setLoading(currentPageState_ == ProductPageState::Loading);
     updateActions(); // 更新按钮状态
 }
 // 重新加载当前页面(以最新的请求为主)

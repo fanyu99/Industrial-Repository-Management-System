@@ -1,11 +1,12 @@
 #include "InboundPage.h"
 #include <QAbstractItemView>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QMessageBox>
 #include <QPointer>
+#include <QPushButton>
 #include <QTableView>
 #include <QVBoxLayout>
-#include <QPushButton>
 
 InboundPage::InboundPage(InboundService* inboundService, MasterDataService* masterDataService, InboundTableModel* tableModel, QWidget* parent)
     : QWidget(parent)
@@ -28,6 +29,18 @@ InboundPage::InboundPage(InboundService* inboundService, MasterDataService* mast
     tableView_->setModel(tableModel_);
     tableView_->setSelectionBehavior(QAbstractItemView::SelectRows);
     tableView_->setSelectionMode(QAbstractItemView::SingleSelection);
+    tableView_->horizontalHeader()->setStretchLastSection(true); // 最后一列自适应宽度
+    tableView_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::OrderNoColumn), 200);
+    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::SupplierColumn), 140);
+    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::StatusColumn), 60);
+    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::OperatorNameColumn), 80);
+    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::WarehouseNameColumn), 120);
+    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::LineCountColumn), 80);
+    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::TotalQuantityColumn), 80);
+    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::CreateAtColumn), 160);
+    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::UpdateAtColumn), 160);
+    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::ConfirmAtColumn), 160);
     selectionModel_ = tableView_->selectionModel();
     // 总布局
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
@@ -111,6 +124,8 @@ void InboundPage::showInformationMessage(const QString& message)
 void InboundPage::setPageState(InboundPageState state)
 {
     currentPageState_ = state;
+    if(pageNavigator_)
+        pageNavigator_->setLoading(currentPageState_ == InboundPageState::Loading);
     updateActions(); // 更新按钮状态
 }
 // 重新加载当前页面(最新请求为准)
@@ -152,8 +167,9 @@ void InboundPage::reloadCurrentPage()
         if (result.page.items.isEmpty()) {
             setPageState(InboundPageState::Empty);
             return;
-        } else
+        } else {
             setPageState(InboundPageState::Ready);
+        }
     });
 }
 // 获取选中的订单
@@ -213,7 +229,7 @@ void InboundPage::loadInboundDialogOptions(InboundEditDialog& dialog, bool isAct
 }
 // 槽函数
 
-// TODO:创建草稿订单
+// 创建草稿订单
 void InboundPage::onCreateClicked()
 {
     // 校验
@@ -231,6 +247,13 @@ void InboundPage::onCreateClicked()
     }
     // 创建编辑框
     InboundEditDialog dialog(InboundEditMode::Create, this);
+    // 设置操作人
+    auto user = inboundService_->currentUser();
+    if (!user.has_value()) {
+        showErrorMessage(QStringLiteral("当前用户不存在"));
+        return;
+    }
+    dialog.setOperatorName(user->userName);
     // 加载分类/单位/仓库服务数据
     connect(&dialog, &InboundEditDialog::masterdataActiveOnlyChanged, this, [this, &dialog](bool activeOnly) {
         loadInboundDialogOptions(dialog, activeOnly);
@@ -244,7 +267,21 @@ void InboundPage::onCreateClicked()
         showErrorMessage(errorMessage);
         return;
     }
-    // TODO: 后续创建订单明细请求+创建订单请求...
+    const CreateInboundOrderRequest request = dialog.createRequest(); // 获取创建订单请求
+    setPageState(InboundPageState::Loading); // 设置加载
+    inboundService_->createDraft(request, this, [this](const InboundOperationResult& result) {
+        if (!result.success) {
+            setPageState(InboundPageState::Error);
+            if (result.error.has_value()) {
+                showOperationError(result.error.value());
+            } else {
+                showErrorMessage(QStringLiteral("创建订单失败,未知错误"));
+            }
+            return;
+        }
+        showInformationMessage(QStringLiteral("创建入库订单成功"));
+        reloadCurrentPage();
+    });
 }
 // 确认订单
 void InboundPage::onConfirmClicked()
@@ -279,8 +316,7 @@ void InboundPage::onConfirmClicked()
     const auto answer = QMessageBox::question(
         this,
         QStringLiteral("确认入库"),
-        QStringLiteral("确认入库订单 %1 吗?\n供应商: %2\n仓库: %3\n").arg(orderDto.value().orderNo).arg(orderDto.value().supplier).arg(orderDto.value().warehouseName),
-        QStringLiteral("订单编号:%1\n").arg(orderDto.value().orderNo));
+        QStringLiteral("确认入库订单 %1 吗?\n供应商: %2\n仓库: %3\n订单号:%4").arg(orderDto.value().orderNo).arg(orderDto.value().supplier).arg(orderDto.value().warehouseName).arg(orderDto.value().orderNo));
     if (answer != QMessageBox::Yes)
         return;
     setPageState(InboundPageState::Loading); // 设置加载状态,防止重复点击
@@ -308,6 +344,7 @@ void InboundPage::updateActions()
 {
     const auto selectedDto = selectedInboundDto();
     bool loading = (currentPageState_ == InboundPageState::Loading);
+    bool isError = (currentPageState_ == InboundPageState::Error);
     bool hasSelection = selectedDto.has_value();
     bool canCreate = inboundService_ && inboundService_->hasPermission(Permission::CreateInboundOrders);
     bool canConfirm = hasSelection && inboundService_ && inboundService_->hasPermission(Permission::ConfirmInboundOrders) && selectedDto.value().status == InboundOrderStatus::Draft;

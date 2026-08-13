@@ -5,6 +5,8 @@ qt_add_library(
     ProductRequests.h
     InboundDto.h
     InboundRequests.h
+    OutboundDto.h
+    OutboundRequests.h
     MasterDataDto.h
     AuditContext.h
 )

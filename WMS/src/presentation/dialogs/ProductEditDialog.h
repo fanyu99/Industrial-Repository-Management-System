@@ -14,6 +14,7 @@
 #include <QString>
 #include <QTextEdit>
 #include <QVBoxLayout>
+constexpr int MaxSafetyStock = 999999999;
 // 编辑模式
 enum class ProductEditMode {
     Create, // 创建产品

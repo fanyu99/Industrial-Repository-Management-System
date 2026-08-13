@@ -123,6 +123,19 @@ public:
         } else {
             nextId_ = std::max(nextId_, created.id + 1);
         }
+        if (created.code.trimmed().isEmpty()) {
+            int maxNum = 0;
+            for (const auto& p : products) {
+                if (p.code.length() > 1 && p.code.startsWith(QLatin1Char('P'))) {
+                    bool ok = false;
+                    int num = p.code.mid(1).toInt(&ok);
+                    if (ok && num > maxNum) {
+                        maxNum = num;
+                    }
+                }
+            }
+            created.code = QStringLiteral("P%1").arg(maxNum + 1, 4, 10, QLatin1Char('0'));
+        }
         products.push_back(created);
         auto callback = std::move(pendingCreateCallback_);
         resetPendingCreate();
@@ -353,6 +366,19 @@ public:
             created.id = nextId_++;
         } else {
             nextId_ = std::max(nextId_, created.id + 1);
+        }
+        if (created.code.trimmed().isEmpty()) {
+            int maxNum = 0;
+            for (const auto& p : products) {
+                if (p.code.length() > 1 && p.code.startsWith(QLatin1Char('P'))) {
+                    bool ok = false;
+                    int num = p.code.mid(1).toInt(&ok);
+                    if (ok && num > maxNum) {
+                        maxNum = num;
+                    }
+                }
+            }
+            created.code = QStringLiteral("P%1").arg(maxNum + 1, 4, 10, QLatin1Char('0'));
         }
 
         products.push_back(created);

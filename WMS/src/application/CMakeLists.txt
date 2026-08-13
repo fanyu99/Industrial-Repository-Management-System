@@ -7,6 +7,8 @@ add_subdirectory(dto)
 target_link_libraries(WmsApplication PUBLIC
     WmsAuthServices
     WmsProductServices
+    WmsInboundServices
+    WmsOutboundServices
     WmsDto
 )
 target_include_directories(WmsApplication PUBLIC

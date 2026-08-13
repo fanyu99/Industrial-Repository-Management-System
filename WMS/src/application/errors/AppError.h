@@ -26,6 +26,11 @@ enum class AppErrorCode {
     InvalidInboundOrder, // 无效的入库订单
     InboundOrderNotFound, // 入库订单不存在
     DuplicateInboundOrder, // 入库订单已存在
+    // OutboundOrder
+    InvalidOutboundOrder, // 无效的出库订单
+    OutboundOrderNotFound, // 出库订单不存在
+    DuplicateOutboundOrder, // 出库订单已存在
+    InsufficientStock, // 库存不足
     // Database / Repository
     RepositoryFailure, // 仓库失败
     DatabaseFailure, // 数据库失败
@@ -97,6 +102,30 @@ struct AppError {
             AppErrorCategory::Validation,
             AppErrorCode::InvalidInboundOrder,
             QStringLiteral("入库订单信息无效")
+        };
+    }
+    static AppError invalidOutboundOrder()
+    {
+        return {
+            AppErrorCategory::Validation,
+            AppErrorCode::InvalidOutboundOrder,
+            QStringLiteral("出库订单信息无效")
+        };
+    }
+    static AppError outboundOrderNotFound()
+    {
+        return {
+            AppErrorCategory::Validation,
+            AppErrorCode::OutboundOrderNotFound,
+            QStringLiteral("出库订单不存在")
+        };
+    }
+    static AppError insufficientStock()
+    {
+        return {
+            AppErrorCategory::Validation,
+            AppErrorCode::InsufficientStock,
+            QStringLiteral("库存不足")
         };
     }
     static AppError repositoryFailure(const QString& message)

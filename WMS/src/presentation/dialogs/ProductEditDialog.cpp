@@ -1,9 +1,9 @@
 #include "ProductEditDialog.h"
-#include <QPushButton>
-#include <QVBoxLayout>
+#include <QComboBox>
 #include <QFormLayout>
 #include <QLineEdit>
-#include <QComboBox>
+#include <QPushButton>
+#include <QVBoxLayout>
 ProductEditDialog::ProductEditDialog(ProductEditMode mode, QWidget* parent)
     : editMode_ { mode }
     , QDialog(parent)
@@ -17,6 +17,7 @@ ProductEditDialog::ProductEditDialog(ProductEditMode mode, QWidget* parent)
     // 1. 产品编码
     codeEdit_ = new QLineEdit(this);
     codeEdit_->setPlaceholderText(QStringLiteral("请输入产品编码"));
+    codeEdit_->setReadOnly(false);
     formLayout->addRow(QStringLiteral("产品编码:"), codeEdit_);
 
     // 2. 产品名称
@@ -40,6 +41,8 @@ ProductEditDialog::ProductEditDialog(ProductEditMode mode, QWidget* parent)
     // 6. 安全库存
     safetyStockSpin_ = new QSpinBox(this);
     formLayout->addRow(QStringLiteral("安全库存:"), safetyStockSpin_);
+    safetyStockSpin_->setMinimum(0);
+    safetyStockSpin_->setMaximum(MaxSafetyStock);
 
     // 7. 产品状态
     activeCheckBox_ = new QCheckBox(QStringLiteral("启用产品"));
@@ -139,7 +142,7 @@ bool ProductEditDialog::validateInput(QString& errorMessage) const noexcept
         errorMessage = QStringLiteral("产品单位框不可用");
         return false;
     }
-    if (codeEdit_->text().trimmed().isEmpty()) {
+    if (codeEdit_->text().trimmed().isEmpty() && editMode_ == ProductEditMode::Edit) {
         errorMessage = QStringLiteral("产品编码不能为空!");
         return false;
     }
@@ -157,6 +160,10 @@ bool ProductEditDialog::validateInput(QString& errorMessage) const noexcept
     }
     if (safetyStockSpin_->value() < 0) {
         errorMessage = QStringLiteral("安全库存不能小于0!");
+        return false;
+    }
+    if (safetyStockSpin_->value() > MaxSafetyStock) {
+        errorMessage = QStringLiteral("安全库存超过最大限度!");
         return false;
     }
     return true;
@@ -200,8 +207,11 @@ void ProductEditDialog::setMode(ProductEditMode mode)
         // 创建产品
     case ProductEditMode::Create: {
         setWindowTitle(QStringLiteral("创建产品"));
-        if (codeEdit_)
-            codeEdit_->setEnabled(true); // 创建产品时,可以修改产品编码
+        if (codeEdit_) {
+            codeEdit_->setReadOnly(true);
+            codeEdit_->setPlaceholderText(QStringLiteral("自动生成:P####"));
+            codeEdit_->clear();
+        }
         if (nameEdit_)
             nameEdit_->setEnabled(true);
         if (specificationEdit_)
@@ -327,10 +337,10 @@ void ProductEditDialog::setOptionsLoading(bool loading)
 // 开始重新加载基础数据,返回序列号
 quint64 ProductEditDialog::beginMasterDataReload()
 {
-    ++masterDataReloadSeq_;// 序列号++
+    ++masterDataReloadSeq_; // 序列号++
     clearMasterDataOptions(); // 清空选项
     setOptionsLoading(true); // 设置加载
-    return masterDataReloadSeq_; 
+    return masterDataReloadSeq_;
 }
 
 // 是否是最新的重新加载的基础数据

@@ -74,12 +74,6 @@ std::optional<AppError> ProductService::validateUpdateProduct(const Product& pro
 // 创建的产品是否合法
 std::optional<AppError> ProductService::validateCreateProduct(const Product& product) const noexcept
 {
-    if (product.code.trimmed().isEmpty())
-        return AppError {
-            AppErrorCategory::Validation,
-            AppErrorCode::InvalidProduct,
-            QStringLiteral("产品编码不能为空")
-        };
     if (product.name.trimmed().isEmpty())
         return AppError {
             AppErrorCategory::Validation,
@@ -194,6 +188,23 @@ void ProductService::createProduct(
     }
     if (auto error = validateCreateProduct(product); error.has_value()) {
         callback(ProductOperationResult { false, std::nullopt, error });
+        return;
+    }
+    if (product.code.trimmed().isEmpty()) {
+        const auto auditCtx = buildAuditContext();
+        repository_.createProduct(product, auditCtx, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const ProductOperationResult& repoResult) {
+            if (ownerPtr.isNull() || !callback)
+                return;
+            if (repoResult.error.has_value()) {
+                callback(ProductOperationResult { false, std::nullopt, repoResult.error.value() });
+                return;
+            }
+            if (!repoResult.product.has_value()) {
+                callback(ProductOperationResult { false, std::nullopt, AppError { AppErrorCategory::Validation, AppErrorCode::InvalidProduct, QStringLiteral("产品创建后未返回有效数据") } });
+                return;
+            }
+            callback(ProductOperationResult { true, repoResult.product.value(), std::nullopt });
+        });
         return;
     }
     // 寻找产品编码是否已存在

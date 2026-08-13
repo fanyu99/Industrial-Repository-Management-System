@@ -1,10 +1,10 @@
-// InboundOrder.h 入库订单
+// OutboundOrder.h 出库订单
 /*数据库表结构:
-1. inbound_orders:
-id, order_no, supplier, status, operator_id, warehouse_id,
+1. outbound_orders:
+id, order_no, recipient, status, operator_id, warehouse_id,
 confirmed_at, remark, created_at, updated_at
 
-2. inbound_details:
+2. outbound_details:
 id, order_id, product_id, quantity, unit_price
 */
 #pragma once
@@ -12,13 +12,13 @@ id, order_id, product_id, quantity, unit_price
 #include <QString>
 #include <QVector>
 #include <optional>
-#include "InboundOrder.h"
-// 入库订单DTO
-struct InboundOrderListItemDto {
+#include "OutboundOrder.h"
+// 出库订单DTO
+struct OutboundOrderListItemDto {
     quint32 id { 0 };
-    QString orderNo;// INB-YYYYMMDD-序号
-    QString supplier;
-    InboundOrderStatus status { InboundOrderStatus::Draft };
+    QString orderNo; // OUT-YYYYMMDD-序号
+    QString recipient; // 接收人/领用方
+    OutboundOrderStatus status { OutboundOrderStatus::Draft };
 
     quint32 operatorId { 0 };
     QString operatorName;
@@ -33,13 +33,13 @@ struct InboundOrderListItemDto {
     QDateTime updatedAt;
     std::optional<QDateTime> confirmedAt;
 };
-// 入库订单筛选器
-struct InboundOrderFilter {
+// 出库订单筛选器
+struct OutboundOrderFilter {
     QString keyword; // 关键词
-    std::optional<InboundOrderStatus> status; // 状态选择
+    std::optional<OutboundOrderStatus> status; // 状态选择
     std::optional<quint32> warehouseId; // 仓库id
     std::optional<QString> orderNo; // 订单号
-    std::optional<QString> supplier; // 供应商
+    std::optional<QString> recipient; // 接收人
     std::optional<QString> operatorName; // 操作人
     std::optional<QString> warehouseName; // 仓库名称
 };

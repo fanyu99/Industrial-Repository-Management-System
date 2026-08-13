@@ -339,10 +339,17 @@ void MySqlProductRepository::createProduct(
                     QStringLiteral("产品信息无效") } });
         return;
     }
+    // 构建产品编码生成语句
+    DatabaseStatement statementGenCode;
+    statementGenCode.type = StatementType::Command;
+    statementGenCode.sql = QStringLiteral(
+        "SET @gen_product_code = CONCAT('P', LPAD(COALESCE("
+        "(SELECT MAX(CAST(SUBSTRING(code, 2) AS UNSIGNED)) FROM products), 0) + 1, 4, '0'))");
+
     // 创建产品插入语句
     DatabaseStatement statement;
     statement.type = StatementType::Command;
-    statement.sql = QStringLiteral("INSERT INTO products(code, name, category_id, unit_id, specification, safety_stock, is_active) VALUES (:code, :name, :category_id, :unit_id, :specification, :safety_stock, :is_active)");
+    statement.sql = QStringLiteral("INSERT INTO products(code, name, category_id, unit_id, specification, safety_stock, is_active) VALUES (CASE WHEN :code = '' THEN @gen_product_code ELSE :code END, :name, :category_id, :unit_id, :specification, :safety_stock, :is_active)");
     statement.parameters.insert("code", product.code);
     statement.parameters.insert("name", product.name);
     statement.parameters.insert("category_id", product.categoryId);
@@ -375,6 +382,7 @@ void MySqlProductRepository::createProduct(
     DatabaseTask task;
     task.requestId = QUuid::createUuid();
     task.type = DatabaseTaskType::Transaction;
+    task.statements.append(statementGenCode);
     task.statements.append(statement);
     task.statements.append(statementSaveId);
     task.statements.append(statementAudit);
@@ -398,7 +406,7 @@ void MySqlProductRepository::createProduct(
                     return;
                 }
                 // 校验语句数量
-                if (result.statementResults.size() != 3) {
+                if (result.statementResults.size() != 4) {
                     callback(ProductOperationResult {
                         false,
                         std::nullopt,
@@ -407,7 +415,7 @@ void MySqlProductRepository::createProduct(
                 }
 
                 // 校验产品插入
-                const auto& insertResult = result.statementResults[0];
+                const auto& insertResult = result.statementResults[1];
                 if (insertResult.affectedRows != 1) {
                     callback(ProductOperationResult {
                         false,
@@ -425,7 +433,7 @@ void MySqlProductRepository::createProduct(
                 }
 
                 // 校验审计日志写入
-                const auto& auditResult = result.statementResults[2];
+                const auto& auditResult = result.statementResults[3];
                 if (auditResult.affectedRows != 1) {
                     callback(ProductOperationResult {
                         false,
