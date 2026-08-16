@@ -1,55 +1,57 @@
-#include "InboundPage.h"
+#include "OutboundPage.h"
+#include "OutboundOrderDetailDialog.h"
+#include "qnamespace.h"
 #include <QAbstractItemView>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
 #include <QTableView>
 #include <QVBoxLayout>
-
-InboundPage::InboundPage(InboundService* inboundService, ProductService* productService, MasterDataService* masterDataService, InboundTableModel* tableModel, QWidget* parent)
+#include <QVariant>
+OutboundPage::OutboundPage(OutboundService* outboundService, ProductService* productService, MasterDataService* masterDataService, OutboundTableModel* tableModel, QWidget* parent)
     : QWidget(parent)
-    , inboundService_(inboundService)
+    , outboundService_(outboundService)
     , productService_(productService)
     , masterDataService_(masterDataService)
     , tableModel_(tableModel)
 {
-    if (!inboundService_ || !masterDataService_ || !productService_ || !tableModel_) {
-        showErrorMessage(QStringLiteral("入库订单页初始化失败,相关服务/模型异常"));
+    if (!outboundService_ || !masterDataService_ || !productService_ || !tableModel_) {
+        showErrorMessage(QStringLiteral("出库订单页初始化失败,相关服务/模型异常"));
         return;
     }
-    setWindowTitle(QStringLiteral("入库订单页"));
-    if (inboundService_) {
-        currentUser_ = inboundService_->currentUser();
+    setWindowTitle(QStringLiteral("出库订单页"));
+    if (outboundService_) {
+        currentUser_ = outboundService_->currentUser();
     }
-    this->setObjectName(QStringLiteral("InboundPage"));
+    this->setObjectName(QStringLiteral("OutboundPage"));
     // 搜索栏
-    // 搜索框
     keywordEdit_ = new QLineEdit(this);
-    keywordEdit_->setObjectName(QStringLiteral("InboundPage_keywordEdit"));
-    keywordEdit_->setPlaceholderText(QStringLiteral("请输入订单号、供应商、操作人、仓库或备注"));
-    // 状态选择框
+    keywordEdit_->setObjectName(QStringLiteral("OutboundPage_keywordEdit"));
+    keywordEdit_->setPlaceholderText(QStringLiteral("请输入订单号、接收人、操作人、仓库或备注"));
+
     statusCombo_ = new QComboBox(this);
-    statusCombo_->setObjectName(QStringLiteral("InboundPage_statusCombo"));
+    statusCombo_->setObjectName(QStringLiteral("OutboundPage_statusCombo"));
     statusCombo_->setPlaceholderText(QStringLiteral("请选择状态"));
     statusCombo_->addItem(QStringLiteral("所有状态"), QVariant());
-    statusCombo_->addItem(QStringLiteral("草稿"), static_cast<int>(InboundOrderStatus::Draft));
-    statusCombo_->addItem(QStringLiteral("已确认"), static_cast<int>(InboundOrderStatus::Confirmed));
-    statusCombo_->addItem(QStringLiteral("已取消"), static_cast<int>(InboundOrderStatus::Cancelled));
+    statusCombo_->addItem(QStringLiteral("草稿"), static_cast<int>(OutboundOrderStatus::Draft));
+    statusCombo_->addItem(QStringLiteral("已确认"), static_cast<int>(OutboundOrderStatus::Confirmed));
+    statusCombo_->addItem(QStringLiteral("已取消"), static_cast<int>(OutboundOrderStatus::Cancelled));
     statusCombo_->setCurrentIndex(0);
-    // 仓库选择框
+
     warehouseCombo_ = new QComboBox(this);
-    warehouseCombo_->setObjectName(QStringLiteral("InboundPage_warehouseCombo"));
+    warehouseCombo_->setObjectName(QStringLiteral("OutboundPage_warehouseCombo"));
     warehouseCombo_->setPlaceholderText(QStringLiteral("请选择仓库"));
     warehouseCombo_->addItem(QStringLiteral("所有仓库"), QVariant());
     warehouseCombo_->setCurrentIndex(0);
-    // 搜索/清除按钮
+
     searchBtn = new QPushButton(QStringLiteral("搜索"), this);
-    searchBtn->setObjectName(QStringLiteral("InboundPage_searchBtn"));
+    searchBtn->setObjectName(QStringLiteral("OutboundPage_searchBtn"));
     clearSearchBtn = new QPushButton(QStringLiteral("清除条件"), this);
-    clearSearchBtn->setObjectName(QStringLiteral("InboundPage_clearSearchBtn"));
-    // 搜索栏布局
+    clearSearchBtn->setObjectName(QStringLiteral("OutboundPage_clearSearchBtn"));
+
     QHBoxLayout* searchLayout = new QHBoxLayout();
     searchLayout->addWidget(keywordEdit_);
     searchLayout->addWidget(statusCombo_);
@@ -57,66 +59,65 @@ InboundPage::InboundPage(InboundService* inboundService, ProductService* product
     searchLayout->addWidget(searchBtn);
     searchLayout->addWidget(clearSearchBtn);
     searchLayout->addStretch(1);
-    searchLayout->setObjectName(QStringLiteral("InboundPage_searchLayout"));
-    // 搜索栏
+    searchLayout->setObjectName(QStringLiteral("OutboundPage_searchLayout"));
+
     QWidget* searchWidget = new QWidget(this);
     searchWidget->setLayout(searchLayout);
-    searchWidget->setObjectName(QStringLiteral("InboundPage_searchWidget"));
-    // 搜索栏信号槽连接
-    connect(searchBtn, &QPushButton::clicked, this, &InboundPage::onSearchClicked);
-    connect(clearSearchBtn, &QPushButton::clicked, this, &InboundPage::onClearSearchClicked);
+    searchWidget->setObjectName(QStringLiteral("OutboundPage_searchWidget"));
+
+    connect(searchBtn, &QPushButton::clicked, this, &OutboundPage::onSearchClicked);
+    connect(clearSearchBtn, &QPushButton::clicked, this, &OutboundPage::onClearSearchClicked);
 
     // 表格视图
     tableView_ = new QTableView(this);
-    tableView_->setObjectName(QStringLiteral("InboundPage_tableView"));
+    tableView_->setObjectName(QStringLiteral("OutboundPage_tableView"));
     tableView_->setModel(tableModel_);
     tableView_->setSelectionBehavior(QAbstractItemView::SelectRows);
     tableView_->setSelectionMode(QAbstractItemView::SingleSelection);
     tableView_->horizontalHeader()->setStretchLastSection(true); // 最后一列自适应宽度
     tableView_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::OrderNoColumn), 200);
-    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::SupplierColumn), 140);
-    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::StatusColumn), 60);
-    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::OperatorNameColumn), 80);
-    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::WarehouseNameColumn), 120);
-    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::LineCountColumn), 80);
-    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::TotalQuantityColumn), 80);
-    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::CreateAtColumn), 160);
-    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::UpdateAtColumn), 160);
-    tableView_->setColumnWidth(static_cast<int>(InboundTableModel::Column::ConfirmAtColumn), 160);
+    tableView_->setColumnWidth(static_cast<int>(OutboundTableModel::Column::OrderNoColumn), 200);
+    tableView_->setColumnWidth(static_cast<int>(OutboundTableModel::Column::RecipientColumn), 140);
+    tableView_->setColumnWidth(static_cast<int>(OutboundTableModel::Column::StatusColumn), 60);
+    tableView_->setColumnWidth(static_cast<int>(OutboundTableModel::Column::OperatorNameColumn), 80);
+    tableView_->setColumnWidth(static_cast<int>(OutboundTableModel::Column::WarehouseNameColumn), 120);
+    tableView_->setColumnWidth(static_cast<int>(OutboundTableModel::Column::LineCountColumn), 80);
+    tableView_->setColumnWidth(static_cast<int>(OutboundTableModel::Column::TotalQuantityColumn), 80);
+    tableView_->setColumnWidth(static_cast<int>(OutboundTableModel::Column::CreateAtColumn), 160);
+    tableView_->setColumnWidth(static_cast<int>(OutboundTableModel::Column::UpdateAtColumn), 160);
+    tableView_->setColumnWidth(static_cast<int>(OutboundTableModel::Column::ConfirmAtColumn), 160);
     selectionModel_ = tableView_->selectionModel();
     // 总布局
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     //  按钮布局
     QHBoxLayout* buttonLayout = new QHBoxLayout();
-    createBtn = new QPushButton(QStringLiteral("创建入库订单"), this);
-    confirmBtn = new QPushButton(QStringLiteral("确认入库订单"), this);
+    createBtn = new QPushButton(QStringLiteral("创建出库订单"), this);
+    confirmBtn = new QPushButton(QStringLiteral("确认出库订单"), this);
+    viewDetailBtn = new QPushButton(QStringLiteral("查看详情"), this);
     reloadBtn = new QPushButton(QStringLiteral("重新加载"), this);
-    detailBtn = new QPushButton(QStringLiteral("查看详情"), this);
-    createBtn->setObjectName(QStringLiteral("InboundPage_createBtn"));
-    confirmBtn->setObjectName(QStringLiteral("InboundPage_confirmBtn"));
-    reloadBtn->setObjectName(QStringLiteral("InboundPage_reloadBtn"));
-    detailBtn->setObjectName(QStringLiteral("InboundPage_detailBtn"));
-
+    createBtn->setObjectName(QStringLiteral("OutboundPage_createBtn"));
+    confirmBtn->setObjectName(QStringLiteral("OutboundPage_confirmBtn"));
+    viewDetailBtn->setObjectName(QStringLiteral("OutboundPage_viewDetailBtn"));
+    reloadBtn->setObjectName(QStringLiteral("OutboundPage_reloadBtn"));
     // 分页导航
     pageNavigator_ = new PageNavigator(this);
-    pageNavigator_->setObjectName(QStringLiteral("InboundPage_pageNavigator"));
+    pageNavigator_->setObjectName(QStringLiteral("OutboundPage_pageNavigator"));
 
     // 添加布局和组件
     mainLayout->addWidget(searchWidget);
     buttonLayout->addWidget(createBtn);
     buttonLayout->addWidget(confirmBtn);
-    buttonLayout->addWidget(detailBtn);
+    buttonLayout->addWidget(viewDetailBtn);
     buttonLayout->addWidget(reloadBtn);
     mainLayout->addLayout(buttonLayout);
     mainLayout->addWidget(tableView_);
     mainLayout->addWidget(pageNavigator_);
     // 连接信号槽
-    connect(createBtn, &QPushButton::clicked, this, &InboundPage::onCreateClicked);
-    connect(confirmBtn, &QPushButton::clicked, this, &InboundPage::onConfirmClicked);
-    connect(reloadBtn, &QPushButton::clicked, this, &InboundPage::onReloadClicked);
-    connect(detailBtn, &QPushButton::clicked, this, &InboundPage::onDetailClicked);
-    connect(tableView_, &QTableView::doubleClicked, this, &InboundPage::onDetailClicked); // //双击查看详情
+    connect(createBtn, &QPushButton::clicked, this, &OutboundPage::onCreateClicked);
+    connect(confirmBtn, &QPushButton::clicked, this, &OutboundPage::onConfirmClicked);
+    connect(viewDetailBtn, &QPushButton::clicked, this, &OutboundPage::onViewDetailClicked);
+    connect(tableView_, &QTableView::doubleClicked, this, &OutboundPage::onViewDetailClicked);
+    connect(reloadBtn, &QPushButton::clicked, this, &OutboundPage::onReloadClicked);
     if (selectionModel_) {
         connect(selectionModel_, &QItemSelectionModel::selectionChanged, this, [this]() { updateActions(); });
     }
@@ -126,13 +127,12 @@ InboundPage::InboundPage(InboundService* inboundService, ProductService* product
         reloadCurrentPage();
     }); // 翻页,重新加载页面
 
-    // 加载数据
     loadWarehouseSearchOptions();
     reloadCurrentPage();
     updateActions();
 }
 // 将错误映射为标题
-QString InboundPage::errorToTitle(const AppError& error) const
+QString OutboundPage::errorToTitle(const AppError& error) const
 {
     switch (error.category) {
     case AppErrorCategory::Validation:
@@ -155,56 +155,55 @@ QString InboundPage::errorToTitle(const AppError& error) const
     }
 }
 // 显示操作错误信息
-void InboundPage::showOperationError(const AppError& error)
+void OutboundPage::showOperationError(const AppError& error)
 {
     if (!error.errorMessage.isEmpty())
         QMessageBox::warning(this, errorToTitle(error), error.errorMessage);
 }
 // 显示错误消息
-void InboundPage::showErrorMessage(const QString& message)
+void OutboundPage::showErrorMessage(const QString& message)
 {
     if (!message.isEmpty())
         QMessageBox::warning(this, QStringLiteral("错误"), message);
 }
 // 显示信息消息
-void InboundPage::showInformationMessage(const QString& message)
+void OutboundPage::showInformationMessage(const QString& message)
 {
     if (!message.isEmpty())
         QMessageBox::information(this, QStringLiteral("信息"), message);
 }
 // 设置当前页的状态并显示消息
-void InboundPage::setPageState(InboundPageState state)
+void OutboundPage::setPageState(OutboundPageState state)
 {
     currentPageState_ = state;
     if (pageNavigator_)
-        pageNavigator_->setLoading(currentPageState_ == InboundPageState::Loading);
+        pageNavigator_->setLoading(currentPageState_ == OutboundPageState::Loading);
     updateActions(); // 更新按钮状态
 }
 // 重新加载当前页面(最新请求为准)
-void InboundPage::reloadCurrentPage()
+void OutboundPage::reloadCurrentPage()
 {
-
     // 请求+1
     const auto requestSeq = ++listRequestSeq_;
     // 校验
-    if (!inboundService_) {
-        setPageState(InboundPageState::Error);
-        showErrorMessage(QStringLiteral("入库服务不可用"));
+    if (!outboundService_) {
+        setPageState(OutboundPageState::Error);
+        showErrorMessage(QStringLiteral("出库服务不可用"));
         return;
     }
     if (!tableModel_) {
-        setPageState(InboundPageState::Error);
+        setPageState(OutboundPageState::Error);
         showErrorMessage(QStringLiteral("表格模型不可用"));
         return;
     }
     // 设置状态
-    setPageState(InboundPageState::Loading);
-    inboundService_->listOrders(currentFilter_, currentRequest_, this, [this, requestSeq](const InboundPageResult& result) {
+    setPageState(OutboundPageState::Loading);
+    outboundService_->listOrders(currentFilter_, currentRequest_, this, [this, requestSeq](const OutboundPageResult& result) {
         if (requestSeq != listRequestSeq_) // 以最新请求为准
             return;
         // 校验
         if (!result.success) {
-            setPageState(InboundPageState::Error);
+            setPageState(OutboundPageState::Error);
             if (result.error.has_value())
                 showOperationError(result.error.value());
             else
@@ -216,16 +215,16 @@ void InboundPage::reloadCurrentPage()
         // 设置页面
         tableModel_->setPage(result.page);
         if (result.page.items.isEmpty()) {
-            setPageState(InboundPageState::Empty);
+            setPageState(OutboundPageState::Empty);
             pageNavigator_->updatePageInfo(tableModel_->page(), tableModel_->totalPages());
             return;
         }
-        setPageState(InboundPageState::Ready);
+        setPageState(OutboundPageState::Ready);
         pageNavigator_->updatePageInfo(tableModel_->page(), tableModel_->totalPages());
     });
 }
 // 获取选中的订单
-std::optional<InboundOrderListItemDto> InboundPage::selectedInboundDto() const
+std::optional<OutboundOrderListItemDto> OutboundPage::selectedOutboundDto() const
 {
     if (!tableView_)
         return std::nullopt;
@@ -237,13 +236,13 @@ std::optional<InboundOrderListItemDto> InboundPage::selectedInboundDto() const
     if (selectedRows.isEmpty())
         return std::nullopt;
     const int row = selectedRows.first().row();
-    const InboundOrderListItemDto order = tableModel_->itemAt(row);
+    const OutboundOrderListItemDto order = tableModel_->itemAt(row);
     if (order.id == 0)
         return std::nullopt;
     return order;
 }
-// 加载仓库数据到入库编辑对话框
-void InboundPage::loadInboundDialogWarehouseOptions(InboundEditDialog& dialog, bool isActiveOnly)
+// 加载仓库数据到出库编辑对话框
+void OutboundPage::loadOutboundDialogWarehouseOptions(OutboundEditDialog& dialog, bool isActiveOnly)
 {
     if (!masterDataService_) {
         showErrorMessage(QStringLiteral("基础数据(仓库)服务不可用"));
@@ -251,7 +250,7 @@ void InboundPage::loadInboundDialogWarehouseOptions(InboundEditDialog& dialog, b
     }
 
     const quint64 warehouseReloadId = dialog.beginWarehouseReload();
-    QPointer<InboundEditDialog> dialogPtr(&dialog);
+    QPointer<OutboundEditDialog> dialogPtr(&dialog);
 
     masterDataService_->listWarehouses(
         &dialog,
@@ -280,8 +279,8 @@ void InboundPage::loadInboundDialogWarehouseOptions(InboundEditDialog& dialog, b
         });
 }
 
-// 加载产品选项数据到入库编辑对话框
-void InboundPage::loadInboundDialogProductOptions(InboundEditDialog& dialog, bool isActiveOnly)
+// 加载产品选项数据到出库编辑对话框
+void OutboundPage::loadOutboundDialogProductOptions(OutboundEditDialog& dialog, bool isActiveOnly)
 {
     if (!productService_) {
         showErrorMessage(QStringLiteral("产品服务不可用"));
@@ -289,7 +288,7 @@ void InboundPage::loadInboundDialogProductOptions(InboundEditDialog& dialog, boo
     }
 
     const quint64 productReloadId = dialog.beginProductReload();
-    QPointer<InboundEditDialog> dialogPtr(&dialog);
+    QPointer<OutboundEditDialog> dialogPtr(&dialog);
 
     productService_->listProductOptions(
         &dialog,
@@ -310,46 +309,46 @@ void InboundPage::loadInboundDialogProductOptions(InboundEditDialog& dialog, boo
         isActiveOnly);
 }
 
-// 总API:加载仓库与产品数据到入库编辑对话框
-void InboundPage::loadInboundDialogOptions(InboundEditDialog& dialog, bool isActiveOnly)
+// 总API:加载仓库与产品数据到出库编辑对话框
+void OutboundPage::loadOutboundDialogOptions(OutboundEditDialog& dialog, bool isActiveOnly)
 {
-    loadInboundDialogWarehouseOptions(dialog, isActiveOnly);
-    loadInboundDialogProductOptions(dialog, isActiveOnly);
+    loadOutboundDialogWarehouseOptions(dialog, isActiveOnly);
+    loadOutboundDialogProductOptions(dialog, isActiveOnly);
 }
 // 槽函数
 
 // 创建草稿订单
-void InboundPage::onCreateClicked()
+void OutboundPage::onCreateClicked()
 {
     // 校验
-    if (!inboundService_) {
-        showErrorMessage(QStringLiteral("入库服务不可用"));
+    if (!outboundService_) {
+        showErrorMessage(QStringLiteral("出库服务不可用"));
         return;
     }
     if (!tableModel_) {
         showErrorMessage(QStringLiteral("表格模型不可用"));
         return;
     }
-    if (!inboundService_->hasPermission(Permission::CreateInboundOrders)) {
+    if (!outboundService_->hasPermission(Permission::CreateOutboundOrders)) {
         showOperationError(AppError::permissionDenied());
         return;
     }
     // 创建编辑框
-    InboundEditDialog dialog(InboundEditMode::Create, this);
+    OutboundEditDialog dialog(OutboundEditMode::Create, this);
     // 设置操作人
-    auto user = inboundService_->currentUser();
+    auto user = outboundService_->currentUser();
     if (!user.has_value()) {
         showErrorMessage(QStringLiteral("当前用户不存在"));
         return;
     }
     dialog.setOperatorName(user->userName);
     // 加载仓库与产品选项数据
-    connect(&dialog, &InboundEditDialog::masterdataActiveOnlyChanged, this, [this, &dialog](bool activeOnly) {
-        loadInboundDialogWarehouseOptions(dialog, activeOnly);
+    connect(&dialog, &OutboundEditDialog::masterdataActiveOnlyChanged, this, [this, &dialog](bool activeOnly) {
+        loadOutboundDialogWarehouseOptions(dialog, activeOnly);
     });
 
-    loadInboundDialogWarehouseOptions(dialog, dialog.isMasterdataActiveOnly()); // 加载仓库数据
-    loadInboundDialogProductOptions(dialog, true);
+    loadOutboundDialogWarehouseOptions(dialog, dialog.isMasterdataActiveOnly()); // 加载仓库数据
+    loadOutboundDialogProductOptions(dialog, true);
 
     if (dialog.exec() != QDialog::Accepted) {
         return;
@@ -359,11 +358,11 @@ void InboundPage::onCreateClicked()
         showErrorMessage(errorMessage);
         return;
     }
-    const CreateInboundOrderRequest request = dialog.createRequest(); // 获取创建订单请求
-    setPageState(InboundPageState::Loading); // 设置加载
-    inboundService_->createDraft(request, this, [this](const InboundOperationResult& result) {
+    const CreateOutboundOrderRequest request = dialog.createRequest(); // 获取创建订单请求
+    setPageState(OutboundPageState::Loading); // 设置加载
+    outboundService_->createDraft(request, this, [this](const OutboundOperationResult& result) {
         if (!result.success) {
-            setPageState(InboundPageState::Error);
+            setPageState(OutboundPageState::Error);
             if (result.error.has_value()) {
                 showOperationError(result.error.value());
             } else {
@@ -371,23 +370,23 @@ void InboundPage::onCreateClicked()
             }
             return;
         }
-        showInformationMessage(QStringLiteral("创建入库订单成功"));
+        showInformationMessage(QStringLiteral("创建出库订单成功"));
         reloadCurrentPage();
     });
 }
 // 确认订单
-void InboundPage::onConfirmClicked()
+void OutboundPage::onConfirmClicked()
 {
     // 校验
-    if (!inboundService_) {
-        showErrorMessage(QStringLiteral("入库服务不可用"));
+    if (!outboundService_) {
+        showErrorMessage(QStringLiteral("出库服务不可用"));
         return;
     }
     if (!tableModel_) {
         showErrorMessage(QStringLiteral("表格模型不可用"));
         return;
     }
-    if (!inboundService_->hasPermission(Permission::ConfirmInboundOrders)) {
+    if (!outboundService_->hasPermission(Permission::ConfirmOutboundOrders)) {
         showOperationError(AppError::permissionDenied());
         return;
     }
@@ -399,23 +398,23 @@ void InboundPage::onConfirmClicked()
         showErrorMessage(QStringLiteral("表格视图不可用"));
         return;
     }
-    std::optional<InboundOrderListItemDto> orderDto = selectedInboundDto();
+    std::optional<OutboundOrderListItemDto> orderDto = selectedOutboundDto();
     if (!orderDto.has_value()) {
         showInformationMessage(QStringLiteral("请选择订单"));
         return;
     }
-    // 二次确认入库
+    // 二次确认出库
     const auto answer = QMessageBox::question(
         this,
-        QStringLiteral("确认入库"),
-        QStringLiteral("确认入库订单 %1 吗?\n供应商: %2\n仓库: %3\n订单号:%4").arg(orderDto.value().orderNo).arg(orderDto.value().supplier).arg(orderDto.value().warehouseName).arg(orderDto.value().orderNo));
+        QStringLiteral("确认出库"),
+        QStringLiteral("确认出库订单 %1 吗?\n接收人: %2\n仓库: %3\n订单号:%4").arg(orderDto.value().orderNo).arg(orderDto.value().recipient).arg(orderDto.value().warehouseName).arg(orderDto.value().orderNo));
     if (answer != QMessageBox::Yes)
         return;
-    setPageState(InboundPageState::Loading); // 设置加载状态,防止重复点击
+    setPageState(OutboundPageState::Loading); // 设置加载状态,防止重复点击
     // 确认订单
-    inboundService_->confirmOrder(orderDto.value().id, this, [this](const InboundOperationResult& result) {
+    outboundService_->confirmOrder(orderDto.value().id, this, [this](const OutboundOperationResult& result) {
         if (!result.success) {
-            setPageState(InboundPageState::Error);
+            setPageState(OutboundPageState::Error);
             if (result.error.has_value())
                 showOperationError(result.error.value());
             else
@@ -427,32 +426,137 @@ void InboundPage::onConfirmClicked()
     });
 }
 // 重新加载
-void InboundPage::onReloadClicked()
+void OutboundPage::onReloadClicked()
 {
     reloadCurrentPage();
 }
-// 查看详情
-void InboundPage::onDetailClicked()
+// 更新操作按钮的状态
+void OutboundPage::updateActions()
 {
-    if (!inboundService_) {
-        showErrorMessage(QStringLiteral("入库服务不可用"));
+    const auto selectedDto = selectedOutboundDto();
+    bool loading = (currentPageState_ == OutboundPageState::Loading);
+    bool isError = (currentPageState_ == OutboundPageState::Error);
+    bool hasSelection = selectedDto.has_value();
+    bool canCreate = outboundService_ && outboundService_->hasPermission(Permission::CreateOutboundOrders);
+    bool canConfirm = hasSelection && outboundService_ && outboundService_->hasPermission(Permission::ConfirmOutboundOrders) && selectedDto.value().status == OutboundOrderStatus::Draft;
+    bool canViewDetail = hasSelection && outboundService_ && outboundService_->hasPermission(Permission::ViewOutboundOrders) && currentPageState_ == OutboundPageState::Ready;
+    // 设置按钮状态
+    createBtn->setEnabled(!loading && canCreate);
+    confirmBtn->setEnabled(!loading && canConfirm && hasSelection && currentPageState_ == OutboundPageState::Ready);
+    viewDetailBtn->setEnabled(!loading && canViewDetail);
+    reloadBtn->setEnabled(!loading);
+    searchBtn->setEnabled(!loading);
+    clearSearchBtn->setEnabled(!loading);
+}
+
+OutboundOrderFilter OutboundPage::readFilterFromControls() const
+{
+    OutboundOrderFilter filter;
+    if (!keywordEdit_ || !statusCombo_ || !warehouseCombo_)
+        return filter;
+
+    filter.keyword = keywordEdit_->text().trimmed();
+
+    const QVariant statusData = statusCombo_->currentData();
+    if (statusData.isValid() && !statusData.isNull()) {
+        filter.status = static_cast<OutboundOrderStatus>(statusData.toInt());
+    }
+
+    const QVariant warehouseData = warehouseCombo_->currentData();
+    bool ok = false;
+    const quint32 warehouseId = warehouseData.toUInt(&ok);
+    if (ok && warehouseId > 0)
+        filter.warehouseId = warehouseId;
+
+    return filter;
+}
+
+void OutboundPage::resetFilterControls()
+{
+    keywordEdit_->clear();
+    statusCombo_->setCurrentIndex(0);
+    warehouseCombo_->setCurrentIndex(0);
+}
+
+void OutboundPage::onSearchClicked()
+{
+    currentFilter_ = readFilterFromControls();
+    currentRequest_.page = 1;
+    reloadCurrentPage();
+}
+
+void OutboundPage::onClearSearchClicked()
+{
+    resetFilterControls();
+    currentFilter_ = {};
+    currentRequest_.page = 1;
+    reloadCurrentPage();
+}
+
+void OutboundPage::loadWarehouseSearchOptions()
+{
+    if (!masterDataService_) {
+        showErrorMessage(QStringLiteral("主数据服务不可用"));
         return;
     }
-    // 校验当前是否选中订单
-    std::optional<InboundOrderListItemDto> orderDto = selectedInboundDto();
+    if (!warehouseCombo_)
+        return;
+
+    warehouseCombo_->setEnabled(false);
+    while (warehouseCombo_->count() > 1) {
+        warehouseCombo_->removeItem(1);
+    }
+
+    masterDataService_->listWarehouses(
+        this,
+        false,
+        [this](const WarehouseListResult& result) {
+            if (!result.success) {
+                showErrorMessage(QStringLiteral("加载仓库数据失败"));
+                warehouseCombo_->setEnabled(true);
+                return;
+            }
+            if (!result.warehouses.has_value()) {
+                showErrorMessage(QStringLiteral("未返回有效仓库数据"));
+                warehouseCombo_->setEnabled(true);
+                return;
+            }
+
+            if (!warehouseCombo_)
+                return;
+
+            for (const auto& warehouse : result.warehouses.value()) {
+                const QString warehouseName = warehouse.name;
+                const quint32 warehouseId = warehouse.id;
+                if (warehouseId == 0)
+                    continue;
+                if (warehouseName.trimmed().isEmpty())
+                    continue;
+                warehouseCombo_->addItem(warehouseName, warehouseId);
+            }
+            warehouseCombo_->setEnabled(true);
+        });
+}
+// 查看详情
+void OutboundPage::onViewDetailClicked()
+{
+    if (!outboundService_) {
+        showErrorMessage(QStringLiteral("出库服务不可用"));
+        return;
+    }
+    std::optional<OutboundOrderListItemDto> orderDto = selectedOutboundDto();
     if (!orderDto.has_value()) {
         showInformationMessage(QStringLiteral("请选择订单"));
         return;
     }
-    // 校验权限
-    if (!inboundService_->hasPermission(Permission::ViewInboundOrders)) {
+    if (!outboundService_->hasPermission(Permission::ViewOutboundOrders)) {
         showOperationError(AppError::permissionDenied());
         return;
     }
-    if(currentPageState_!=InboundPageState::Ready)return;
-    // service进行查询获取订单详情
+    if(currentPageState_!=OutboundPageState::Ready)
+        return;
     const quint64 requestSeq = ++detailRequestSeq_;
-    inboundService_->getOrderDetail(orderDto.value().id, this, [this, requestSeq](const InboundOrderDetailResult& result) {
+    outboundService_->getOrderDetail(orderDto.value().id, this, [this, requestSeq](const OutboundOrderDetailResult& result) {
         if (detailRequestSeq_ != requestSeq)
             return;
         if (!result.success) {
@@ -468,116 +572,8 @@ void InboundPage::onDetailClicked()
             return;
         }
         const auto& orderDetail = result.orderDetail.value();
-        // 显示订单详情
-        InboundOrderDetailDialog* dialog = new InboundOrderDetailDialog(orderDetail, this); // open非阻塞,需要手动创建内存(堆)
-        dialog->setAttribute(Qt::WA_DeleteOnClose); // 关闭自动销毁
+        OutboundOrderDetailDialog* dialog=new OutboundOrderDetailDialog(orderDetail, this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
         dialog->open();
     });
-}
-
-// 更新操作按钮的状态
-void InboundPage::updateActions()
-{
-    const auto selectedDto = selectedInboundDto();
-    bool loading = (currentPageState_ == InboundPageState::Loading);
-    bool isError = (currentPageState_ == InboundPageState::Error);
-    bool hasSelection = selectedDto.has_value();
-    bool canCreate = inboundService_ && inboundService_->hasPermission(Permission::CreateInboundOrders);
-    bool canConfirm = hasSelection && inboundService_ && inboundService_->hasPermission(Permission::ConfirmInboundOrders) && selectedDto.value().status == InboundOrderStatus::Draft;
-    bool canViewDetail = hasSelection && inboundService_ && inboundService_->hasPermission(Permission::ViewInboundOrders) && currentPageState_ == InboundPageState::Ready;
-    // 设置按钮状态
-    createBtn->setEnabled(!loading && canCreate);
-    confirmBtn->setEnabled(!loading && canConfirm && hasSelection && currentPageState_ == InboundPageState::Ready);
-    reloadBtn->setEnabled(!loading);
-    searchBtn->setEnabled(!loading);
-    clearSearchBtn->setEnabled(!loading);
-    detailBtn->setEnabled(!loading && canViewDetail);
-}
-// 从控件读取筛选器
-InboundOrderFilter InboundPage::readFilterFromControls() const
-{
-    InboundOrderFilter filter;
-    if (!keywordEdit_ || !statusCombo_ || !warehouseCombo_)
-        return filter;
-    // 关键字
-    filter.keyword = keywordEdit_->text().trimmed();
-    // 状态
-    const QVariant statusData = statusCombo_->currentData();
-    if (statusData.isValid() && !statusData.isNull()) {
-        filter.status = static_cast<InboundOrderStatus>(statusData.toInt());
-    }
-    // 仓库
-    const QVariant warehouseData = warehouseCombo_->currentData();
-    bool ok = false;
-    const quint32 warehouseId = warehouseData.toUInt(&ok);
-    if (ok && warehouseId > 0)
-        filter.warehouseId = warehouseId;
-    return filter;
-}
-// 重置筛选器控件
-void InboundPage::resetFilterControls()
-{
-    keywordEdit_->clear();
-    statusCombo_->setCurrentIndex(0);
-    warehouseCombo_->setCurrentIndex(0);
-}
-// 搜索功能
-// 搜索
-void InboundPage::onSearchClicked()
-{
-    currentFilter_ = readFilterFromControls();
-    currentRequest_.page = 1;
-    reloadCurrentPage();
-}
-// 清除搜索
-void InboundPage::onClearSearchClicked()
-{
-    resetFilterControls();
-    currentFilter_ = {};
-    currentRequest_.page = 1;
-    reloadCurrentPage();
-}
-// 加载仓库搜索选项
-void InboundPage::loadWarehouseSearchOptions()
-{
-    if (!masterDataService_) {
-        showErrorMessage(QStringLiteral("主数据服务不可用"));
-        return;
-    }
-    if (!warehouseCombo_)
-        return;
-    warehouseCombo_->setEnabled(false);
-    // 移除除了"所有仓库"的所有选项
-    while (warehouseCombo_->count() > 1) {
-        warehouseCombo_->removeItem(1);
-    }
-    // 加载仓库
-    masterDataService_->listWarehouses(
-        this,
-        false,
-        [this](const WarehouseListResult& result) {
-            if (!result.success) {
-                showErrorMessage(QStringLiteral("加载仓库数据失败"));
-                return;
-            }
-            if (!result.warehouses.has_value()) {
-                showErrorMessage(QStringLiteral("未返回有效仓库数据"));
-                return;
-            }
-
-            if (!warehouseCombo_)
-                return;
-
-            // 添加仓库
-            for (const auto warehouse : result.warehouses.value()) {
-                const QString warehouseName = warehouse.name;
-                const quint32 warehouseId = warehouse.id;
-                if (warehouseId == 0)
-                    continue;
-                if (warehouseName.trimmed().isEmpty())
-                    continue;
-                warehouseCombo_->addItem(warehouseName, warehouseId);
-            }
-            warehouseCombo_->setEnabled(true);
-        });
 }

@@ -22,6 +22,7 @@ public:
     ~OutboundService() = default;
     using OperateCallback = IOutboundRepository::OperateCallback;
     using PageCallback = IOutboundRepository::PageCallback;
+    using DetailCallback = IOutboundRepository::DetailCallback;
     // 获取当前的用户
     std::optional<AuthenticatedUser> currentUser() const noexcept;
     // 构建审计上下文
@@ -57,6 +58,11 @@ public:
         quint32 id,
         QObject* owner,
         OperateCallback callback);
+    // 获取订单详情
+    void getOrderDetail(
+        quint32 id,
+        QObject* owner,
+        DetailCallback callback);
 
 private:
     RequestToOutboundOrderResult requestToOrder(const CreateOutboundOrderRequest& request) const noexcept;

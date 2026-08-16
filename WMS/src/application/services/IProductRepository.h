@@ -21,12 +21,18 @@ struct ProductPageResult {
     PageResult<ProductListItemDto> page;
     std::optional<AppError> error;
 };
-
+// 选择结果
+struct ProductOptionsResult {
+    bool success { false };
+    QVector<ProductOptionDto> productOptions; // 产品选项
+    std::optional<AppError> error;
+};
 class IProductRepository {
 public:
     using PageCallback = std::function<void(const ProductPageResult&)>; // 分页回调
     using OperateCallback = std::function<void(const ProductOperationResult&)>; // 操作回调
     using ActiveCallback = std::function<void(std::optional<AppError> error)>; // 状态设置回调
+    using OptionsCallback = std::function<void(const ProductOptionsResult&)>; // 选项回调
     virtual ~IProductRepository() = default;
     // 根据条件分页列出产品
     virtual void listProducts(
@@ -35,6 +41,8 @@ public:
         QObject* owner,
         PageCallback callback_)
         = 0;
+    // 列出所有产品选项(默认仅激活)
+    virtual void listProductOptions(QObject* owner, OptionsCallback callback, bool activeOnly = true) = 0;
     // 通过编码找物品,让ProductService检查编码唯一性
     virtual void findByCode(
         const QString& code,

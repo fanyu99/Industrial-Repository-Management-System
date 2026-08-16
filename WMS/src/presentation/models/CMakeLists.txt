@@ -12,6 +12,13 @@ qt_add_library(
     InboundTableModel.h
 )
 
+# OutboundTableModel
+qt_add_library(
+    WmsOutboundTableModel STATIC
+    OutboundTableModel.cpp
+    OutboundTableModel.h
+)
+
 # 总库
 qt_add_library(
     WmsModels INTERFACE)
@@ -26,10 +33,16 @@ target_link_libraries(WmsInboundTableModel PUBLIC
     Qt6::Widgets
     WmsDto
 )
+target_link_libraries(WmsOutboundTableModel PUBLIC
+    Qt6::Core
+    Qt6::Widgets
+    WmsDto
+)
 target_link_libraries(WmsModels
     INTERFACE
     WmsProductTableModel
     WmsInboundTableModel
+    WmsOutboundTableModel
 )
 
 target_include_directories(
@@ -40,3 +53,4 @@ target_include_directories(
 
 target_include_directories(WmsProductTableModel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(WmsInboundTableModel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(WmsOutboundTableModel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

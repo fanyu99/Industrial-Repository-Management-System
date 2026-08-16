@@ -19,11 +19,19 @@ struct InboundPageResult {
     PageResult<InboundOrderListItemDto> page;
     std::optional<AppError> error;
 };
+// 订单详情查找结果
+struct InboundOrderDetailResult {
+    bool success { false };
+    std::optional<InboundOrderDetailDto> orderDetail;
+    std::optional<AppError> error;
+
+};
 // 入库接口
 class IInboundRepository {
 public:
     using OperateCallback = std::function<void(InboundOperationResult)>; // 入库操作回调
     using PageCallback = std::function<void(InboundPageResult)>; // 入库分页回调
+    using DetailCallback = std::function<void(InboundOrderDetailResult)>; // 订单详情回调
     virtual ~IInboundRepository() = default;
     // 创建草稿订单(必须返回有效的订单OrderNo和订单ID)
     // 确保orderNo在INSERT前已经生成(Service层创建的orderNo允许为空,但是数据库层不允许为空!)
@@ -58,5 +66,11 @@ public:
         const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback)
+        = 0;
+    // 获取订单详情
+    virtual void getOrderDetail(
+        quint32 id,
+        QObject* owner,
+        DetailCallback callback)
         = 0;
 };

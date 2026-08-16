@@ -3,6 +3,7 @@
 #include "IInboundRepository.h"
 
 #include <QDateTime>
+#include <QHash>
 #include <QPointer>
 #include <QVector>
 #include <algorithm>
@@ -22,7 +23,7 @@
 //     (未找到时返回 success=true、order=nullopt、error=nullopt)。
 //
 // 异步测试能力(与 FakeProductRepository 基本一致,并做了一处改进):
-//   - 通过 deferXxx 标志可以把 listOrders/createDraft/confirmOrder 挂起,
+//   - 通过 deferXxx 标志可以把 listOrders/createDraft/confirmOrder/getOrderDetail 挂起,
 //     稍后用 completePendingXxx 显式完成,模拟真实仓储的异步时序。
 //   - 挂起期间会记录 owner 的 QPointer。当 owner 在延迟期间被销毁时,
 //     completePendingXxx 不会触发回调(避免悬空回调 / 访问已销毁对象),
@@ -32,13 +33,30 @@
 //   - 错误注入(nextXxxError)在立即完成与延迟完成路径中均生效:
 //     completePendingXxxSuccess() 会先消费 nextXxxError,若已设置则按错误完成,
 //     避免"测试配置了错误却仍走成功路径"的假象(FakeProductRepository 未做此处理)。
+//   - 关联数据配置:真实 SQL 通过 JOIN users/warehouses/products 返回操作人真实姓名、
+//     仓库名称、产品编码/产品名称(详情与列表)。Fake 通过
+//     operatorNames/warehouseNames/productCodes/productNames 映射表提供可配置值,
+//     未配置时对应字段返回空串;用于验证详情/列表 DTO 的完整映射。
 class FakeInboundRepository : public IInboundRepository {
 public:
     QVector<InboundOrder> orders;
+    // 关联数据配置(模拟真实 SQL JOIN 查询返回的字段):
+    // operatorId -> 操作人真实姓名、warehouseId -> 仓库名称、
+    // productId -> 产品编码 / 产品名称。
+    QHash<quint32, QString> operatorNames;
+    QHash<quint32, QString> warehouseNames;
+    QHash<quint32, QString> productCodes;
+    QHash<quint32, QString> productNames;
+
+    void setOperatorName(quint32 id, const QString& name) { operatorNames[id] = name; }
+    void setWarehouseName(quint32 id, const QString& name) { warehouseNames[id] = name; }
+    void setProductCode(quint32 id, const QString& code) { productCodes[id] = code; }
+    void setProductName(quint32 id, const QString& name) { productNames[id] = name; }
     std::optional<AppError> nextListError;
     std::optional<AppError> nextFindError;
     std::optional<AppError> nextCreateError;
     std::optional<AppError> nextConfirmError;
+    std::optional<AppError> nextDetailError;
 
     std::optional<InboundOrderFilter> lastListFilter;
     std::optional<PageRequest> lastListPageRequest;
@@ -51,6 +69,7 @@ public:
     bool deferConfirmOrder { false };
     bool deferFindById { false };
     bool deferFindByOrderNo { false };
+    bool deferGetOrderDetail { false };
 
     // ===== 挂起状态查询 =====
 
@@ -83,6 +102,11 @@ public:
     [[nodiscard]] bool hasPendingFindByOrderNo() const noexcept
     {
         return static_cast<bool>(pendingFindByOrderNoCallback_);
+    }
+
+    [[nodiscard]] bool hasPendingGetOrderDetail() const noexcept
+    {
+        return static_cast<bool>(pendingGetOrderDetailCallback_);
     }
 
     // ===== listOrders 完成 =====
@@ -307,6 +331,52 @@ public:
         completePendingFindByOrderNo(InboundOperationResult { false, std::nullopt, error });
     }
 
+    // ===== getOrderDetail 完成 =====
+
+    void completePendingGetOrderDetail(const InboundOrderDetailResult& result)
+    {
+        if (!pendingGetOrderDetailCallback_) {
+            return;
+        }
+        if (pendingGetOrderDetailOwner_.isNull()) {
+            resetPendingGetOrderDetail();
+            return;
+        }
+        auto callback = std::move(pendingGetOrderDetailCallback_);
+        resetPendingGetOrderDetail();
+        callback(result);
+    }
+
+    // 以成功完成:按挂起时记录的 id 从内存仓库构建详情(与立即完成路径一致)
+    void completePendingGetOrderDetailSuccess()
+    {
+        if (!pendingGetOrderDetailCallback_) {
+            return;
+        }
+        if (pendingGetOrderDetailOwner_.isNull()) {
+            resetPendingGetOrderDetail();
+            return;
+        }
+        // 错误注入优先
+        if (nextDetailError.has_value()) {
+            const auto error = nextDetailError;
+            nextDetailError.reset();
+            auto callback = std::move(pendingGetOrderDetailCallback_);
+            resetPendingGetOrderDetail();
+            callback(InboundOrderDetailResult { false, std::nullopt, error });
+            return;
+        }
+        const quint32 id = pendingGetOrderDetailId_;
+        auto callback = std::move(pendingGetOrderDetailCallback_);
+        resetPendingGetOrderDetail();
+        callback(performGetOrderDetail(id));
+    }
+
+    void completePendingGetOrderDetailError(const AppError& error)
+    {
+        completePendingGetOrderDetail(InboundOrderDetailResult { false, std::nullopt, error });
+    }
+
     // ===== 辅助 =====
 
     void addOrder(const InboundOrder& order)
@@ -322,6 +392,10 @@ public:
     void clear()
     {
         orders.clear();
+        operatorNames.clear();
+        warehouseNames.clear();
+        productCodes.clear();
+        productNames.clear();
         lastListFilter.reset();
         lastListPageRequest.reset();
         lastCreateDraftOrder.reset();
@@ -331,17 +405,20 @@ public:
         nextFindError.reset();
         nextCreateError.reset();
         nextConfirmError.reset();
+        nextDetailError.reset();
         deferListOrders = false;
         deferCreateDraft = false;
         deferConfirmOrder = false;
         deferFindById = false;
         deferFindByOrderNo = false;
+        deferGetOrderDetail = false;
 
         pendingListOps_.clear();
         resetPendingCreate();
         resetPendingConfirm();
         resetPendingFindById();
         resetPendingFindByOrderNo();
+        resetPendingGetOrderDetail();
         nextId_ = 1;
         nextLineId_ = 1;
     }
@@ -498,6 +575,33 @@ public:
         callback(performConfirm(id, auditContext.operatorId));
     }
 
+    void getOrderDetail(
+        quint32 id,
+        QObject* owner,
+        DetailCallback callback) override
+    {
+        QPointer<QObject> ownerPtr(owner);
+        if (ownerPtr.isNull() || !callback) {
+            return;
+        }
+
+        if (deferGetOrderDetail) {
+            pendingGetOrderDetailCallback_ = std::move(callback);
+            pendingGetOrderDetailId_ = id;
+            pendingGetOrderDetailOwner_ = ownerPtr;
+            return;
+        }
+
+        if (nextDetailError.has_value()) {
+            const auto error = nextDetailError;
+            nextDetailError.reset();
+            callback(InboundOrderDetailResult { false, std::nullopt, error });
+            return;
+        }
+
+        callback(performGetOrderDetail(id));
+    }
+
 private:
     // 一个挂起的 listOrders 请求
     struct PendingListOp {
@@ -586,7 +690,7 @@ private:
         return true;
     }
 
-    static InboundOrderListItemDto toListItem(const InboundOrder& order)
+    InboundOrderListItemDto toListItem(const InboundOrder& order) const
     {
         InboundOrderListItemDto dto;
         dto.id = order.id;
@@ -594,9 +698,9 @@ private:
         dto.supplier = order.supplier;
         dto.status = order.status;
         dto.operatorId = order.operatorId;
-        dto.operatorName = QString();
+        dto.operatorName = operatorNames.value(order.operatorId);
         dto.warehouseId = order.warehouseId;
-        dto.warehouseName = QString();
+        dto.warehouseName = warehouseNames.value(order.warehouseId);
         dto.lineCount = order.lines.size();
         dto.totalQuantity = 0;
         for (const auto& line : order.lines) {
@@ -793,5 +897,76 @@ private:
         pendingFindByOrderNoCallback_ = nullptr;
         pendingFindByOrderNoOrderNo_.clear();
         pendingFindByOrderNoOwner_.clear();
+    }
+
+    // getOrderDetail 的实际构建逻辑:按 id 查找订单,未找到/无明细返回错误,
+    // 否则从内存订单构建详情(子合计 = 单价 * 数量,并累计总数量/总金额)。
+    // 立即完成路径与 completePendingGetOrderDetailSuccess 共用此逻辑。
+    InboundOrderDetailResult performGetOrderDetail(quint32 id) const
+    {
+        const auto found = std::find_if(orders.cbegin(), orders.cend(),
+            [id](const InboundOrder& order) {
+                return order.id == id;
+            });
+
+        if (found == orders.cend()) {
+            return InboundOrderDetailResult {
+                false,
+                std::nullopt,
+                AppError {
+                    AppErrorCategory::Database,
+                    AppErrorCode::InboundOrderNotFound,
+                    QStringLiteral("入库订单不存在") }
+            };
+        }
+
+        if (found->lines.isEmpty()) {
+            return InboundOrderDetailResult {
+                false,
+                std::nullopt,
+                AppError::repositoryFailure(QStringLiteral("获取订单详情失败,订单详情行查询异常"))
+            };
+        }
+
+        InboundOrderDetailDto detail;
+        detail.id = found->id;
+        detail.orderNo = found->orderNo;
+        detail.supplier = found->supplier;
+        detail.status = found->status;
+        detail.operatorId = found->operatorId;
+        detail.operatorName = operatorNames.value(found->operatorId);
+        detail.warehouseId = found->warehouseId;
+        detail.warehouseName = warehouseNames.value(found->warehouseId);
+        detail.remark = found->remark;
+        detail.createdAt = found->createdAt;
+        detail.updatedAt = found->updatedAt;
+        detail.confirmedAt = found->confirmedAt;
+
+        for (const auto& line : found->lines) {
+            InboundOrderDetailLineDto detailLine;
+            detailLine.productId = line.productId;
+            detailLine.productCode = productCodes.value(line.productId);
+            detailLine.productName = productNames.value(line.productId);
+            detailLine.quantity = line.quantity;
+            detailLine.unitPrice = line.unitPrice;
+            detailLine.subtotal = line.unitPrice * line.quantity;
+            detail.detailLines.append(detailLine);
+            detail.totalQuantity += detailLine.quantity;
+            detail.totalAmount += detailLine.subtotal;
+        }
+        detail.lineCount = detail.detailLines.size();
+
+        return InboundOrderDetailResult { true, detail, std::nullopt };
+    }
+
+    DetailCallback pendingGetOrderDetailCallback_;
+    quint32 pendingGetOrderDetailId_ { 0 };
+    QPointer<QObject> pendingGetOrderDetailOwner_;
+
+    void resetPendingGetOrderDetail() noexcept
+    {
+        pendingGetOrderDetailCallback_ = nullptr;
+        pendingGetOrderDetailId_ = 0;
+        pendingGetOrderDetailOwner_.clear();
     }
 };

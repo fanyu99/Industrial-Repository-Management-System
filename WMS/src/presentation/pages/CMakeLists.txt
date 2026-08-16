@@ -13,6 +13,11 @@ qt_add_library(WmsInboundPage STATIC
     InboundPage.cpp InboundPage.h
 )
 
+# OutboundPage
+qt_add_library(WmsOutboundPage STATIC
+    OutboundPage.cpp OutboundPage.h
+)
+
 # 总库
 qt_add_library(WmsPages INTERFACE)
 
@@ -29,9 +34,22 @@ target_link_libraries(WmsProductPage PUBLIC
 target_link_libraries(WmsInboundPage PUBLIC
     Qt6::Widgets Qt6::Core
     WmsPageNavigator
+    WmsProductServices
     WmsInboundServices
     WmsInboundTableModel
     WmsInboundEditDialog
+    WmsInboundOrderDetailDialog
+    WmsDomain
+    WmsMasterDataServices
+)
+target_link_libraries(WmsOutboundPage PUBLIC
+    Qt6::Widgets Qt6::Core
+    WmsPageNavigator
+    WmsProductServices
+    WmsOutboundServices
+    WmsOutboundTableModel
+    WmsOutboundEditDialog
+    WmsOutboundOrderDetailDialog
     WmsDomain
     WmsMasterDataServices
 )
@@ -40,8 +58,11 @@ target_link_libraries(WmsPages
     WmsPageNavigator
     WmsProductPage
     WmsInboundPage
+    WmsOutboundPage
 )
 target_include_directories(WmsPageNavigator PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(WmsProductPage PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(WmsInboundPage PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(WmsOutboundPage PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
 )

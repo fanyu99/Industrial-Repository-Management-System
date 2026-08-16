@@ -231,7 +231,72 @@ void MySqlProductRepository::listProducts(
 
     executor_.submitTask(task); // 最后提交任务
 }
+// 列出产品选项(默认仅激活)
+void MySqlProductRepository::listProductOptions(
+    QObject* owner,
+    OptionsCallback callback,
+    bool activeOnly)
+{
+    // 校验参数
+    QPointer<QObject> ownerPtr(owner);
+    if (ownerPtr.isNull() || !callback)
+        return;
+    // 构建任务
+    DatabaseStatement statement;
+    statement.type = StatementType::Query;
+    statement.sql = QStringLiteral("SELECT id,code,name FROM products ");
+    if (activeOnly) {
+        statement.sql += QStringLiteral("WHERE is_active = :activeOnly ");
+        statement.parameters.insert("activeOnly", activeOnly);
+        }
+    statement.sql += QStringLiteral("ORDER BY name,code ASC");
+    DatabaseTask task;
+    task.type = DatabaseTaskType::Single;
+    task.statements.append(statement);
+    task.requestId = QUuid::createUuid();
 
+    //添加到pendign_
+    pending_.insert(task.requestId, PendingRequest { ownerPtr, [ownerPtr, callback = std::move(callback)](const DatabaseResult& result) {
+                                                        if (ownerPtr.isNull() || !callback)
+                                                            return;
+                                                        if (!result.isSucceeded()) {
+                                                            callback(ProductOptionsResult {
+                                                                false,
+                                                                {},
+                                                                mapDatabaseErrorToAppError(result.error) });
+                                                            return;
+                                                        }
+                                                        if (result.statementResults.isEmpty()) {
+                                                            callback(ProductOptionsResult {
+                                                                false,
+                                                                {},
+                                 AppError::repositoryFailure(QStringLiteral("产品选项结果为空"))  });
+                                                                     return;
+                                                        }
+                                                        const auto statementResult = result.statementResults.constFirst();
+                                                        // 如果没有找到结果
+                                                        if (statementResult.rows.isEmpty()) {
+                                                            callback(ProductOptionsResult {true,{},std::nullopt  });
+             return;                                               
+   }
+   //  获取最后结果
+   QVector<ProductOptionDto> productOptions;
+   for (const auto& row : statementResult.rows) {
+        ProductOptionDto dto;
+        dto.id = row[0].toUInt();
+        dto.code = row[1].toString();
+        dto.name = row[2].toString();
+        productOptions.append(dto);
+   }
+   callback(ProductOptionsResult {true,productOptions,std::nullopt  });
+   
+    }
+    });
+
+    // 最后提交任务
+    executor_.submitTask(task);
+
+}
 // 通过编码查找产品
 void MySqlProductRepository::findByCode(
     const QString& code,

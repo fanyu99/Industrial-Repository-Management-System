@@ -8,11 +8,11 @@ confirmed_at, remark, created_at, updated_at
 id, order_id, product_id, quantity, unit_price
 */
 #pragma once
+#include "OutboundOrder.h"
 #include <QDateTime>
 #include <QString>
 #include <QVector>
 #include <optional>
-#include "OutboundOrder.h"
 // 出库订单DTO
 struct OutboundOrderListItemDto {
     quint32 id { 0 };
@@ -32,6 +32,39 @@ struct OutboundOrderListItemDto {
     QDateTime createdAt;
     QDateTime updatedAt;
     std::optional<QDateTime> confirmedAt;
+};
+// 出库订单行详情
+struct OutboundOrderDetailLineDto {
+    quint32 productId { 0 };
+    QString productCode;
+    QString productName;
+    int quantity { 0 };
+    double unitPrice { 0.0 };
+    double subtotal { 0.0 };
+};
+// 出库订单详情
+struct OutboundOrderDetailDto {
+    quint32 id { 0 };
+    QString orderNo;
+    QString recipient;
+    OutboundOrderStatus status { OutboundOrderStatus::Draft };
+
+    quint32 operatorId { 0 };
+    QString operatorName;
+
+    quint32 warehouseId { 0 };
+    QString warehouseName;
+
+    QString remark;
+    int lineCount { 0 };
+    int totalQuantity { 0 };
+    double totalAmount { 0.0 };
+
+    QDateTime createdAt;
+    QDateTime updatedAt;
+    std::optional<QDateTime> confirmedAt;
+
+    QVector<OutboundOrderDetailLineDto> detailLines;
 };
 // 出库订单筛选器
 struct OutboundOrderFilter {

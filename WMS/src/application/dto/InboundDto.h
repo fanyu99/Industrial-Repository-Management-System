@@ -43,3 +43,40 @@ struct InboundOrderFilter {
     std::optional<QString> operatorName; // 操作人
     std::optional<QString> warehouseName; // 仓库名称
 };
+// 入库订单行详情
+struct InboundOrderDetailLineDto {
+    quint32 productId { 0 };
+    QString productCode;
+    QString productName;
+    int quantity { 0 };
+    double unitPrice { 0.0 };
+    double subtotal { 0.0 };
+
+};
+// 入库订单详情
+struct InboundOrderDetailDto {
+    
+    quint32 id { 0 };
+    QString orderNo;
+    QString supplier;
+    InboundOrderStatus status { InboundOrderStatus::Draft };
+
+    quint32 operatorId { 0 };
+    QString operatorName;
+
+    quint32 warehouseId { 0 };
+    QString warehouseName;
+
+    QString remark;
+    int lineCount { 0 }; // 订单行数量
+    int totalQuantity { 0 }; // 总数量
+    double totalAmount { 0.0 }; // 总金额
+
+    QDateTime createdAt;
+    QDateTime updatedAt;
+    std::optional<QDateTime> confirmedAt;
+
+    QVector<InboundOrderDetailLineDto> detailLines;
+
+    
+ };

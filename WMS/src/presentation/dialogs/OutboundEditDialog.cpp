@@ -1,4 +1,4 @@
-#include "InboundEditDialog.h"
+#include "OutboundEditDialog.h"
 #include <QDialogButtonBox>
 #include <QCompleter>
 #include <QFormLayout>
@@ -8,11 +8,11 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QWidget>
-InboundEditDialog::InboundEditDialog(InboundEditMode editMode, QWidget* parent)
+OutboundEditDialog::OutboundEditDialog(OutboundEditMode editMode, QWidget* parent)
     : editMode_(editMode)
     , QDialog(parent)
 {
-    this->setWindowTitle(QStringLiteral("创建入库订单"));
+    this->setWindowTitle(QStringLiteral("创建出库订单"));
     this->resize(600, 500);
     this->setMinimumSize(500, 400);
     // 主布局
@@ -21,13 +21,13 @@ InboundEditDialog::InboundEditDialog(InboundEditMode editMode, QWidget* parent)
     QFormLayout* formLayout = new QFormLayout();
     // 订单编号
     orderNoEdit_ = new QLineEdit(this);
-    orderNoEdit_->setPlaceholderText(QStringLiteral("自动生成:INB-YYYYMMDD-######"));
+    orderNoEdit_->setPlaceholderText(QStringLiteral("自动生成:OUT-YYYYMMDD-######"));
     orderNoEdit_->setReadOnly(true); // 只读(创建时自动生成)
-    formLayout->addRow(QStringLiteral("入库订单编号"), orderNoEdit_);
-    // 1.供应商
-    supplierEdit_ = new QLineEdit(this);
-    supplierEdit_->setPlaceholderText(QStringLiteral("请输入供应商"));
-    formLayout->addRow(QStringLiteral("供应商"), supplierEdit_);
+    formLayout->addRow(QStringLiteral("出库订单编号"), orderNoEdit_);
+    // 1.接收人
+    recipientEdit_ = new QLineEdit(this);
+    recipientEdit_->setPlaceholderText(QStringLiteral("请输入接收人"));
+    formLayout->addRow(QStringLiteral("接收人"), recipientEdit_);
     // 2.操作人
     operatorNameEdit_ = new QLineEdit(this);
     operatorNameEdit_->setPlaceholderText(QStringLiteral("当前用户"));
@@ -58,7 +58,7 @@ InboundEditDialog::InboundEditDialog(InboundEditMode editMode, QWidget* parent)
     lineBtnLayout->addWidget(addLineBtn_);
     lineBtnLayout->addWidget(removeLineBtn_);
 
-    // 9.入库订单明细表
+    // 9.出库订单明细表
     linesTable_ = new QTableWidget(this);
     linesTable_->setColumnCount(static_cast<int>(LineColumn::CountColumn));
     linesTable_->setHorizontalHeaderLabels({
@@ -83,21 +83,21 @@ InboundEditDialog::InboundEditDialog(InboundEditMode editMode, QWidget* parent)
     // 连接信号槽
     connect(sureButtonBox_, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(sureButtonBox_, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(masterdataActiveOnlyCheckBox_, &QCheckBox::toggled, this, &InboundEditDialog::masterdataActiveOnlyChanged);
-    connect(linesTable_, &QTableWidget::itemChanged, this, &InboundEditDialog::updateLineSummary);
-    connect(addLineBtn_, &QPushButton::clicked, this, &InboundEditDialog::addEmptyLine);
-    connect(removeLineBtn_, &QPushButton::clicked, this, &InboundEditDialog::removeSelectedLine);
+    connect(masterdataActiveOnlyCheckBox_, &QCheckBox::toggled, this, &OutboundEditDialog::masterdataActiveOnlyChanged);
+    connect(linesTable_, &QTableWidget::itemChanged, this, &OutboundEditDialog::updateLineSummary);
+    connect(addLineBtn_, &QPushButton::clicked, this, &OutboundEditDialog::addEmptyLine);
+    connect(removeLineBtn_, &QPushButton::clicked, this, &OutboundEditDialog::removeSelectedLine);
     setMode(editMode_);
 }
 // 设置订单信息
-void InboundEditDialog::setInboundOrder(const InboundOrderListItemDto& order)
+void OutboundEditDialog::setOutboundOrder(const OutboundOrderListItemDto& order)
 {
     pendingWarehouseId_ = order.warehouseId;
 
     if (orderNoEdit_)
         orderNoEdit_->setText(order.orderNo);
-    if (supplierEdit_)
-        supplierEdit_->setText(order.supplier);
+    if (recipientEdit_)
+        recipientEdit_->setText(order.recipient);
     if (operatorNameEdit_)
         operatorNameEdit_->setText(order.operatorName);
     if (warehouseComboBox_) {
@@ -111,19 +111,19 @@ void InboundEditDialog::setInboundOrder(const InboundOrderListItemDto& order)
         totalQuantityEdit_->setText(QString::number(order.totalQuantity));
 }
 // 设置产品选项
-void InboundEditDialog::setProductOptions(const QVector<ProductOptionDto>& options)
+void OutboundEditDialog::setProductOptions(const QVector<ProductOptionDto>& options)
 {
     this->productOptions_ = options;
 }
 
 // 设置编辑模式
-void InboundEditDialog::setMode(InboundEditMode mode)
+void OutboundEditDialog::setMode(OutboundEditMode mode)
 {
     editMode_ = mode;
     switch (editMode_) {
-    case InboundEditMode::Create:
-        if (supplierEdit_)
-            supplierEdit_->setEnabled(true);
+    case OutboundEditMode::Create:
+        if (recipientEdit_)
+            recipientEdit_->setEnabled(true);
         if (operatorNameEdit_)
             operatorNameEdit_->setEnabled(true);
         if (warehouseComboBox_)
@@ -143,7 +143,7 @@ void InboundEditDialog::setMode(InboundEditMode mode)
 }
 
 // 添加仓库
-bool InboundEditDialog::addWarehouse(const QString& warehouseName, quint32 warehouseId, QString& errorMessage)
+bool OutboundEditDialog::addWarehouse(const QString& warehouseName, quint32 warehouseId, QString& errorMessage)
 {
     if (!warehouseComboBox_) {
         errorMessage = QStringLiteral("仓库选择框不存在");
@@ -166,7 +166,7 @@ bool InboundEditDialog::addWarehouse(const QString& warehouseName, quint32 wareh
 }
 
 // 校验输入
-bool InboundEditDialog::validateInput(QString& errorMessage) const noexcept
+bool OutboundEditDialog::validateInput(QString& errorMessage) const noexcept
 {
     if (!errorMessage.isEmpty()) {
         errorMessage.clear();
@@ -175,8 +175,8 @@ bool InboundEditDialog::validateInput(QString& errorMessage) const noexcept
         errorMessage = QStringLiteral("订单编号不可用!");
         return false;
     }
-    if (!supplierEdit_) {
-        errorMessage = QStringLiteral("供应商不可用!");
+    if (!recipientEdit_) {
+        errorMessage = QStringLiteral("接收人不可用!");
         return false;
     }
     if (!operatorNameEdit_) {
@@ -199,8 +199,8 @@ bool InboundEditDialog::validateInput(QString& errorMessage) const noexcept
         errorMessage = QStringLiteral("请至少添加一行订单行!");
         return false;
     }
-    if (supplierEdit_->text().trimmed().isEmpty()) {
-        errorMessage = QStringLiteral("供应商不能为空!");
+    if (recipientEdit_->text().trimmed().isEmpty()) {
+        errorMessage = QStringLiteral("接收人不能为空!");
         return false;
     }
     if (operatorNameEdit_->text().trimmed().isEmpty()) {
@@ -253,21 +253,21 @@ bool InboundEditDialog::validateInput(QString& errorMessage) const noexcept
     return true;
 }
 // 是否仅显示活跃仓库
-bool InboundEditDialog::isMasterdataActiveOnly() const noexcept
+bool OutboundEditDialog::isMasterdataActiveOnly() const noexcept
 {
     if (!masterdataActiveOnlyCheckBox_)
         return false;
     return masterdataActiveOnlyCheckBox_->isChecked();
 }
 // 设置操作人
-void InboundEditDialog::setOperatorName(const QString& operatorName)
+void OutboundEditDialog::setOperatorName(const QString& operatorName)
 {
     if (operatorNameEdit_)
         operatorNameEdit_->setText(QStringLiteral("当前用户:%1").arg(operatorName));
 }
 
 // 添加订单行
-void InboundEditDialog::addEmptyLine()
+void OutboundEditDialog::addEmptyLine()
 {
     if (!linesTable_)
         return;
@@ -296,7 +296,7 @@ void InboundEditDialog::addEmptyLine()
 }
 
 // 删除选中行
-void InboundEditDialog::removeSelectedLine()
+void OutboundEditDialog::removeSelectedLine()
 {
     if (!linesTable_)
         return;
@@ -308,7 +308,7 @@ void InboundEditDialog::removeSelectedLine()
 }
 
 // 更新订单表数据
-void InboundEditDialog::updateLineSummary()
+void OutboundEditDialog::updateLineSummary()
 {
     if (!linesTable_ || !lineCountEdit_ || !totalQuantityEdit_)
         return;
@@ -325,13 +325,12 @@ void InboundEditDialog::updateLineSummary()
     totalQuantityEdit_->setText(QString::number(totalQuantity));
 }
 
-// 获取创建入库单请求(未校验相关数据)
-CreateInboundOrderRequest InboundEditDialog::createRequest() const noexcept
+// 获取创建出库单请求(未校验相关数据)
+CreateOutboundOrderRequest OutboundEditDialog::createRequest() const noexcept
 {
-    // TODO: 从匹配选项获取ID
-    CreateInboundOrderRequest request;
-    if (supplierEdit_)
-        request.supplier = supplierEdit_->text().trimmed();
+    CreateOutboundOrderRequest request;
+    if (recipientEdit_)
+        request.recipient = recipientEdit_->text().trimmed();
     if (warehouseComboBox_)
         request.warehouseId = warehouseComboBox_->currentData().toUInt();
     if (remarkEdit_)
@@ -349,7 +348,7 @@ CreateInboundOrderRequest InboundEditDialog::createRequest() const noexcept
         const quint32 productId = productCombo->itemData(index).toUInt();
         const int quantity = linesTable_->item(r, static_cast<int>(LineColumn::Quantity)) ? linesTable_->item(r, static_cast<int>(LineColumn::Quantity))->text().toInt() : 0;
         const double unitPrice = linesTable_->item(r, static_cast<int>(LineColumn::UnitPrice)) ? linesTable_->item(r, static_cast<int>(LineColumn::UnitPrice))->text().toDouble() : 0.0;
-        CreateInboundOrderLineRequest lineRequest;
+        CreateOutboundOrderLineRequest lineRequest;
         lineRequest.productId = productId;
         lineRequest.quantity = quantity;
         lineRequest.unitPrice = unitPrice;
@@ -361,7 +360,7 @@ CreateInboundOrderRequest InboundEditDialog::createRequest() const noexcept
 // 仓库数据动态刷新:
 
 // 开始重新加载仓库服务数据
-quint64 InboundEditDialog::beginWarehouseReload()
+quint64 OutboundEditDialog::beginWarehouseReload()
 {
     if (!warehouseComboBox_)
         return 0;
@@ -374,13 +373,13 @@ quint64 InboundEditDialog::beginWarehouseReload()
 }
 
 // 是否是当前重新加载的仓库服务数据
-bool InboundEditDialog::isCurrentWarehouseReload(quint64 reloadId) const noexcept
+bool OutboundEditDialog::isCurrentWarehouseReload(quint64 reloadId) const noexcept
 {
     return reloadId == warehouseLoad_.requestId;
 }
 
 // 完成重新加载仓库服务数据
-void InboundEditDialog::finishWarehouseReload(quint64 reloadId, bool success)
+void OutboundEditDialog::finishWarehouseReload(quint64 reloadId, bool success)
 {
     if (!isCurrentWarehouseReload(reloadId))
         return;
@@ -390,7 +389,7 @@ void InboundEditDialog::finishWarehouseReload(quint64 reloadId, bool success)
 }
 
 // 清除仓库服务数据
-void InboundEditDialog::clearWarehouseOptions()
+void OutboundEditDialog::clearWarehouseOptions()
 {
     if (!warehouseComboBox_)
         return;
@@ -400,7 +399,7 @@ void InboundEditDialog::clearWarehouseOptions()
 // 产品数据动态刷新:
 
 // 开始重新加载产品选项数据
-quint64 InboundEditDialog::beginProductReload()
+quint64 OutboundEditDialog::beginProductReload()
 {
     ++productLoad_.requestId;
     productLoad_.state = OptionLoadState::Loading;
@@ -410,13 +409,13 @@ quint64 InboundEditDialog::beginProductReload()
 }
 
 // 是否是当前重新加载的产品选项数据
-bool InboundEditDialog::isCurrentProductReload(quint64 reloadId) const noexcept
+bool OutboundEditDialog::isCurrentProductReload(quint64 reloadId) const noexcept
 {
     return reloadId == productLoad_.requestId;
 }
 
 // 完成重新加载产品选项数据
-void InboundEditDialog::finishProductReload(
+void OutboundEditDialog::finishProductReload(
     quint64 requestId,
     bool success)
 {
@@ -428,12 +427,12 @@ void InboundEditDialog::finishProductReload(
 }
 
 // 清除产品选项数据
-void InboundEditDialog::clearProductOptions()
+void OutboundEditDialog::clearProductOptions()
 {
     productOptions_.clear();
 }
 // 设置产品选项可用
-void InboundEditDialog::setProductComboEnabled(bool enabled)
+void OutboundEditDialog::setProductComboEnabled(bool enabled)
 {
     if (!linesTable_)
         return;
@@ -445,7 +444,7 @@ void InboundEditDialog::setProductComboEnabled(bool enabled)
 }
 
 // 同步选项刷新状态,更新对应组件状态
-void InboundEditDialog::syncOptionControls()
+void OutboundEditDialog::syncOptionControls()
 {
     const bool warehouseReady = warehouseLoad_.state == OptionLoadState::Ready;
     const bool productReady = productLoad_.state == OptionLoadState::Ready;

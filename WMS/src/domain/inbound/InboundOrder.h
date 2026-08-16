@@ -5,9 +5,10 @@
 #include <optional>
 // 入库订单状态
 enum class InboundOrderStatus {
-    Draft, // 草稿
+    Draft=0, // 草稿
     Confirmed, // 已确认
-    Cancelled // 已取消
+    Cancelled ,// 已取消
+    Count // 状态数量
 };
 // 入库订单明细
 struct InboundOrderLine {

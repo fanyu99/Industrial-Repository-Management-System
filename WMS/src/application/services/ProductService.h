@@ -19,8 +19,10 @@ public:
     using PageCallback = IProductRepository::PageCallback; // 分页回调
     using OperateCallback = IProductRepository::OperateCallback; // 操作回调
     using ActiveCallback = IProductRepository::ActiveCallback; // 状态设置回调
-                                                               // 获取当前的用户
-    std::optional<AuthenticatedUser> currentUser() const noexcept;
+    using OptionsCallback = IProductRepository::OptionsCallback; // 产品选项结果回调
+        // 获取当前的用户
+        std::optional<AuthenticatedUser>
+        currentUser() const noexcept;
     // 校验用户是否有权限操作产品
     [[nodiscard]] bool hasPermission(Permission permission) const noexcept;
     [[nodiscard]] std::optional<AppError> authorize(Permission permission) const;
@@ -41,6 +43,10 @@ public:
         const PageRequest& pageRequest,
         QObject* owner,
         PageCallback callback);
+    // 获取产品选项
+    void listProductOptions(
+        QObject* owner, OptionsCallback callback,
+        bool activeOnly = true);
     // 创建产品
     void createProduct(
         const Product& product,

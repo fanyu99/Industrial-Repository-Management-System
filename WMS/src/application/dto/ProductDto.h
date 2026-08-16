@@ -42,3 +42,9 @@ struct PageResult {
     int page { 1 };
     int pageSize { PAGESIZE };
 };
+// 产品选项DTO(供其他模块进行选择)
+struct ProductOptionDto {
+    quint32 id { 0 };
+    QString code;
+    QString name;
+};

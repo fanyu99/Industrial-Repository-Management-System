@@ -171,7 +171,39 @@ void ProductService::listProducts(
         callback(repoResult);
     });
 }
-
+// 获取产品选项
+void ProductService::listProductOptions(
+    QObject* owner,
+    OptionsCallback callback,
+    bool activeOnly)
+{
+    // 校验参数
+    QPointer<QObject> ownerPtr(owner);
+    if (ownerPtr.isNull() || !callback)
+        return;
+    // 校验是否有权限
+    if (auto error = authorize(Permission::ViewProducts); error.has_value()) {
+        callback(ProductOptionsResult { false,{}, error });
+        return;
+    }
+    repository_.listProductOptions(ownerPtr.data(), [ownerPtr, this, callback = std::move(callback)](const ProductOptionsResult& repoResult) {
+        if (ownerPtr.isNull() || !callback)
+            return;
+        if (!repoResult.success) {
+            callback(ProductOptionsResult { false, {},repoResult.error.has_value()?repoResult.error.value(): AppError::repositoryFailure(QStringLiteral("查询产品选项失败")) });
+            return;
+        }
+        if (repoResult.error.has_value()) {
+            callback(ProductOptionsResult { false, {},repoResult.error.value() });
+            return;
+        }
+        callback(ProductOptionsResult {
+            true,
+            repoResult.productOptions,
+            std::nullopt
+        });
+    }, activeOnly);
+}
 // 创建产品
 void ProductService::createProduct(
     const Product& product,

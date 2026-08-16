@@ -19,6 +19,12 @@ struct OutboundPageResult {
     PageResult<OutboundOrderListItemDto> page;
     std::optional<AppError> error;
 };
+// 出库订单详情结果
+struct OutboundOrderDetailResult {
+    bool success { false };
+    std::optional<OutboundOrderDetailDto> orderDetail;
+    std::optional<AppError> error;
+};
 // 出库接口
 //
 // 出库确认(confirmOrder)与入库确认最大的区别在于"库存扣减",业务规则约定如下:
@@ -40,6 +46,7 @@ class IOutboundRepository {
 public:
     using OperateCallback = std::function<void(OutboundOperationResult)>; // 出库操作回调
     using PageCallback = std::function<void(OutboundPageResult)>; // 出库分页回调
+    using DetailCallback = std::function<void(OutboundOrderDetailResult)>; // 出库详情回调
     virtual ~IOutboundRepository() = default;
     // 创建草稿订单(必须返回有效的订单OrderNo和订单ID)
     // 确保orderNo在INSERT前已经生成(Service层创建的orderNo允许为空,但是数据库层不允许为空!)
@@ -74,5 +81,11 @@ public:
         const AuditContext& auditContext,
         QObject* owner,
         OperateCallback callback)
+        = 0;
+    // 获取订单详情
+    virtual void getOrderDetail(
+        quint32 id,
+        QObject* owner,
+        DetailCallback callback)
         = 0;
 };

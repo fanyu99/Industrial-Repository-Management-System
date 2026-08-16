@@ -1,7 +1,7 @@
 #pragma once
-#include "InboundDto.h"
-#include "InboundRequests.h"
 #include "OptionLoadTracker.h"
+#include "OutboundDto.h"
+#include "OutboundRequests.h"
 #include "ProductDto.h"
 #include <QAbstractItemView>
 #include <QCheckBox>
@@ -17,10 +17,10 @@
 #include <QTextEdit>
 #include <QVBoxLayout>
 // 编辑模式
-enum class InboundEditMode {
-    Create, // 创建入库单
+enum class OutboundEditMode {
+    Create, // 创建出库单
 };
-class InboundEditDialog : public QDialog {
+class OutboundEditDialog : public QDialog {
     Q_OBJECT
 public:
     // 订单明细列枚举
@@ -30,16 +30,16 @@ public:
         UnitPrice,
         CountColumn // 获取订单列数
     };
-    InboundEditDialog(InboundEditMode mode = InboundEditMode::Create, QWidget* parent = nullptr);
-    ~InboundEditDialog() = default;
+    OutboundEditDialog(OutboundEditMode mode = OutboundEditMode::Create, QWidget* parent = nullptr);
+    ~OutboundEditDialog() = default;
     bool isMasterdataActiveOnly() const noexcept;
-    void setInboundOrder(const InboundOrderListItemDto& order); // 设置编辑的订单
+    void setOutboundOrder(const OutboundOrderListItemDto& order); // 设置编辑的订单
     void setProductOptions(const QVector<ProductOptionDto>& productOptions); // 设置产品选项
     bool validateInput(QString& errorMessage) const noexcept; // 校验输入
-    void setMode(InboundEditMode mode); // 设置编辑模式
+    void setMode(OutboundEditMode mode); // 设置编辑模式
     bool addWarehouse(const QString& warehouseName, quint32 warehouseId, QString& errorMessage); // 添加仓库
-    // 获取创建入库单请求
-    CreateInboundOrderRequest createRequest() const noexcept;
+    // 获取创建出库单请求
+    CreateOutboundOrderRequest createRequest() const noexcept;
     // 添加空订单行
     void addEmptyLine();
     // 删除选中行
@@ -73,8 +73,8 @@ public:
 
 private:
     QVector<ProductOptionDto> productOptions_; // 产品选项
-    QLineEdit* orderNoEdit_; // 入库订单编号输入框
-    QLineEdit* supplierEdit_; // 供应商输入框
+    QLineEdit* orderNoEdit_; // 出库订单编号输入框
+    QLineEdit* recipientEdit_; // 接收人输入框
     QLineEdit* operatorNameEdit_; // 操作人输入框
     QComboBox* warehouseComboBox_; // 仓库下拉框
     QLineEdit* lineCountEdit_; // 明细数
@@ -85,7 +85,7 @@ private:
     QPushButton* addLineBtn_; // 添加订单行
     QPushButton* removeLineBtn_; // 删除订单行
     QDialogButtonBox* sureButtonBox_; // 确认按钮框
-    InboundEditMode editMode_; // 编辑模式
+    OutboundEditMode editMode_; // 编辑模式
     OptionLoadTracker warehouseLoad_; // 刷新仓库上下文
     OptionLoadTracker productLoad_; // 刷新产品上下文
     quint32 pendingWarehouseId_ { 0 }; // 待回显仓库ID

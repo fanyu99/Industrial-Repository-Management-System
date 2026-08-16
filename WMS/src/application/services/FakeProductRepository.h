@@ -26,6 +26,7 @@ public:
     std::optional<AppError> nextCreateError;
     std::optional<AppError> nextUpdateError;
     std::optional<AppError> nextActiveError;
+    std::optional<AppError> nextListOptionsError;
 
     std::optional<ProductFilter> lastFilter;
     std::optional<PageRequest> lastPageRequest;
@@ -33,11 +34,13 @@ public:
     std::optional<Product> lastUpdatedProduct;
     std::optional<quint32> lastActiveProductId;
     std::optional<bool> lastActiveValue;
+    std::optional<bool> lastListOptionsActiveOnly;
 
     bool deferListProducts { false };
     bool deferCreateProduct { false };
     bool deferUpdateProduct { false };
     bool deferSetProductActive { false };
+    bool deferListProductOptions { false };
 
     // ===== 挂起状态查询 =====
 
@@ -65,6 +68,16 @@ public:
     [[nodiscard]] bool hasPendingSetProductActive() const noexcept
     {
         return static_cast<bool>(pendingActiveCallback_);
+    }
+
+    [[nodiscard]] bool hasPendingListProductOptions() const noexcept
+    {
+        return !pendingListOptionsOps_.isEmpty();
+    }
+
+    [[nodiscard]] int pendingListOptionsCount() const noexcept
+    {
+        return pendingListOptionsOps_.size();
     }
 
     // ===== listProducts 完成 =====
@@ -232,6 +245,28 @@ public:
         completePendingSetProductActive(error);
     }
 
+    // ===== listProductOptions 完成 =====
+
+    void completePendingListProductOptionsSuccess(int index = 0)
+    {
+        if (index < 0 || index >= pendingListOptionsOps_.size()) {
+            return;
+        }
+        const auto& op = pendingListOptionsOps_.at(index);
+        completePendingListOptionsAt(index,
+            buildListOptionsSuccessResult(op.activeOnly));
+    }
+
+    void completePendingListProductOptions(const ProductOptionsResult& result, int index = 0)
+    {
+        completePendingListOptionsAt(index, result);
+    }
+
+    void completePendingListProductOptionsError(const AppError& error, int index = 0)
+    {
+        completePendingListOptionsAt(index, ProductOptionsResult { false, {}, error });
+    }
+
     // ===== 辅助 =====
 
     void addProduct(const Product& product)
@@ -250,17 +285,21 @@ public:
         lastUpdatedProduct.reset();
         lastActiveProductId.reset();
         lastActiveValue.reset();
+        lastListOptionsActiveOnly.reset();
         nextListError.reset();
         nextFindError.reset();
         nextCreateError.reset();
         nextUpdateError.reset();
         nextActiveError.reset();
+        nextListOptionsError.reset();
         deferListProducts = false;
         deferCreateProduct = false;
         deferUpdateProduct = false;
         deferSetProductActive = false;
+        deferListProductOptions = false;
 
         pendingListOps_.clear();
+        pendingListOptionsOps_.clear();
         resetPendingCreate();
         resetPendingUpdate();
         resetPendingActive();
@@ -301,6 +340,37 @@ public:
         }
 
         callback(buildListProductsSuccessResult(filter, pageRequest));
+    }
+
+    void listProductOptions(
+        QObject* owner,
+        OptionsCallback callback,
+        bool activeOnly = true) override
+    {
+        QPointer<QObject> ownerPtr(owner);
+        if (ownerPtr.isNull() || !callback) {
+            return;
+        }
+
+        lastListOptionsActiveOnly = activeOnly;
+
+        if (deferListProductOptions) {
+            PendingListOptionsOp op;
+            op.callback = std::move(callback);
+            op.activeOnly = activeOnly;
+            op.owner = ownerPtr;
+            pendingListOptionsOps_.append(std::move(op));
+            return;
+        }
+
+        if (nextListOptionsError.has_value()) {
+            const auto error = nextListOptionsError;
+            nextListOptionsError.reset();
+            callback(ProductOptionsResult { false, {}, error });
+            return;
+        }
+
+        callback(buildListOptionsSuccessResult(activeOnly));
     }
 
     void findByCode(
@@ -482,6 +552,13 @@ private:
         QPointer<QObject> owner;
     };
 
+    // 一个挂起的 listProductOptions 请求
+    struct PendingListOptionsOp {
+        OptionsCallback callback;
+        bool activeOnly { true };
+        QPointer<QObject> owner;
+    };
+
     void completePendingListProductsAt(int index, const ProductPageResult& result)
     {
         if (index < 0 || index >= pendingListOps_.size()) {
@@ -490,6 +567,19 @@ private:
         PendingListOp op = std::move(pendingListOps_[index]);
         pendingListOps_.removeAt(index);
         // owner 已在挂起期间销毁:丢弃回调,避免悬空
+        if (op.owner.isNull() || !op.callback) {
+            return;
+        }
+        op.callback(result);
+    }
+
+    void completePendingListOptionsAt(int index, const ProductOptionsResult& result)
+    {
+        if (index < 0 || index >= pendingListOptionsOps_.size()) {
+            return;
+        }
+        PendingListOptionsOp op = std::move(pendingListOptionsOps_[index]);
+        pendingListOptionsOps_.removeAt(index);
         if (op.owner.isNull() || !op.callback) {
             return;
         }
@@ -546,6 +636,22 @@ private:
         return ProductPageResult { true, page, std::nullopt };
     }
 
+    ProductOptionsResult buildListOptionsSuccessResult(bool activeOnly) const
+    {
+        QVector<ProductOptionDto> options;
+        for (const auto& product : products) {
+            if (activeOnly && !product.active) {
+                continue;
+            }
+            ProductOptionDto dto;
+            dto.id = product.id;
+            dto.code = product.code;
+            dto.name = product.name;
+            options.push_back(dto);
+        }
+        return ProductOptionsResult { true, options, std::nullopt };
+    }
+
     static bool matchesFilter(const Product& product, const ProductFilter& filter)
     {
         if (!filter.keyword.trimmed().isEmpty()) {
@@ -588,6 +694,9 @@ private:
 
     // listProducts 支持多个并行挂起请求
     QVector<PendingListOp> pendingListOps_;
+
+    // listProductOptions 支持多个并行挂起请求
+    QVector<PendingListOptionsOp> pendingListOptionsOps_;
 
     OperateCallback pendingCreateCallback_;
     std::optional<Product> pendingCreateProduct_;

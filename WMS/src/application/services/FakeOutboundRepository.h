@@ -48,10 +48,20 @@ public:
     QVector<OutboundOrder> orders;
     // 库存模拟: key = "productId_warehouseId", value = 可用数量
     QHash<QString, int> stockBalances;
+    QHash<quint32, QString> operatorNames;
+    QHash<quint32, QString> warehouseNames;
+    QHash<quint32, QString> productCodes;
+    QHash<quint32, QString> productNames;
+
+    void setOperatorName(quint32 id, const QString& name) { operatorNames[id] = name; }
+    void setWarehouseName(quint32 id, const QString& name) { warehouseNames[id] = name; }
+    void setProductCode(quint32 id, const QString& code) { productCodes[id] = code; }
+    void setProductName(quint32 id, const QString& name) { productNames[id] = name; }
     std::optional<AppError> nextListError;
     std::optional<AppError> nextFindError;
     std::optional<AppError> nextCreateError;
     std::optional<AppError> nextConfirmError;
+    std::optional<AppError> nextDetailError;
 
     std::optional<OutboundOrderFilter> lastListFilter;
     std::optional<PageRequest> lastListPageRequest;
@@ -64,6 +74,7 @@ public:
     bool deferConfirmOrder { false };
     bool deferFindById { false };
     bool deferFindByOrderNo { false };
+    bool deferGetOrderDetail { false };
 
     // ===== 库存辅助方法 =====
 
@@ -114,9 +125,15 @@ public:
         return static_cast<bool>(pendingFindByOrderNoCallback_);
     }
 
+    [[nodiscard]] bool hasPendingGetOrderDetail() const noexcept
+    {
+        return static_cast<bool>(pendingGetOrderDetailCallback_);
+    }
+
     // ===== listOrders 完成 =====
 
-    void completePendingListOrdersSuccess(int index = 0)
+    void
+    completePendingListOrdersSuccess(int index = 0)
     {
         if (index < 0 || index >= pendingListOps_.size()) {
             return;
@@ -323,21 +340,72 @@ public:
         completePendingFindByOrderNo(OutboundOperationResult { false, std::nullopt, error });
     }
 
+    // ===== getOrderDetail 完成 =====
+
+    void completePendingGetOrderDetail(const OutboundOrderDetailResult& result)
+    {
+        if (!pendingGetOrderDetailCallback_) {
+            return;
+        }
+        if (pendingGetOrderDetailOwner_.isNull()) {
+            resetPendingGetOrderDetail();
+            return;
+        }
+        auto callback = std::move(pendingGetOrderDetailCallback_);
+        resetPendingGetOrderDetail();
+        callback(result);
+    }
+
+    void completePendingGetOrderDetailSuccess()
+    {
+        if (!pendingGetOrderDetailCallback_) {
+            return;
+        }
+        if (pendingGetOrderDetailOwner_.isNull()) {
+            resetPendingGetOrderDetail();
+            return;
+        }
+        if (nextDetailError.has_value()) {
+            const auto error = nextDetailError;
+            nextDetailError.reset();
+            auto callback = std::move(pendingGetOrderDetailCallback_);
+            resetPendingGetOrderDetail();
+            callback(OutboundOrderDetailResult { false, std::nullopt, error });
+            return;
+        }
+        const quint32 id = pendingGetOrderDetailId_;
+        auto callback = std::move(pendingGetOrderDetailCallback_);
+        resetPendingGetOrderDetail();
+        callback(performGetOrderDetail(id));
+    }
+
+    void completePendingGetOrderDetailError(const AppError& error)
+    {
+        completePendingGetOrderDetail(OutboundOrderDetailResult { false, std::nullopt, error });
+    }
+
     // ===== 辅助 =====
 
     void addOrder(const OutboundOrder& order)
     {
-        orders.push_back(order);
-        nextId_ = std::max(nextId_, order.id + 1);
-        for (const auto& line : order.lines) {
+        OutboundOrder o = order;
+        nextId_ = std::max(nextId_, o.id + 1);
+        for (auto& line : o.lines) {
+            if (line.orderId == 0 && o.id != 0)
+                line.orderId = o.id;
             nextLineId_ = std::max(nextLineId_, line.id + 1);
         }
+        orders.push_back(o);
     }
 
     void clear()
     {
         orders.clear();
         stockBalances.clear();
+        operatorNames.clear();
+        warehouseNames.clear();
+        productCodes.clear();
+        productNames.clear();
         lastListFilter.reset();
         lastListPageRequest.reset();
         lastCreateDraftOrder.reset();
@@ -347,17 +415,20 @@ public:
         nextFindError.reset();
         nextCreateError.reset();
         nextConfirmError.reset();
+        nextDetailError.reset();
         deferListOrders = false;
         deferCreateDraft = false;
         deferConfirmOrder = false;
         deferFindById = false;
         deferFindByOrderNo = false;
+        deferGetOrderDetail = false;
 
         pendingListOps_.clear();
         resetPendingCreate();
         resetPendingConfirm();
         resetPendingFindById();
         resetPendingFindByOrderNo();
+        resetPendingGetOrderDetail();
         nextId_ = 1;
         nextLineId_ = 1;
     }
@@ -512,6 +583,33 @@ public:
         }
 
         callback(performConfirm(id, auditContext.operatorId));
+    }
+
+    void getOrderDetail(
+        quint32 id,
+        QObject* owner,
+        DetailCallback callback) override
+    {
+        QPointer<QObject> ownerPtr(owner);
+        if (ownerPtr.isNull() || !callback) {
+            return;
+        }
+
+        if (deferGetOrderDetail) {
+            pendingGetOrderDetailCallback_ = std::move(callback);
+            pendingGetOrderDetailId_ = id;
+            pendingGetOrderDetailOwner_ = ownerPtr;
+            return;
+        }
+
+        if (nextDetailError.has_value()) {
+            const auto error = nextDetailError;
+            nextDetailError.reset();
+            callback(OutboundOrderDetailResult { false, std::nullopt, error });
+            return;
+        }
+
+        callback(performGetOrderDetail(id));
     }
 
 private:
@@ -807,6 +905,63 @@ private:
         return OutboundOperationResult { true, *found, std::nullopt };
     }
 
+    OutboundOrderDetailResult performGetOrderDetail(quint32 id) const
+    {
+        const auto found = std::find_if(orders.cbegin(), orders.cend(),
+            [id](const OutboundOrder& order) {
+                return order.id == id;
+            });
+
+        if (found == orders.cend()) {
+            return OutboundOrderDetailResult {
+                false,
+                std::nullopt,
+                AppError {
+                    AppErrorCategory::Database,
+                    AppErrorCode::OutboundOrderNotFound,
+                    QStringLiteral("出库订单不存在") }
+            };
+        }
+
+        if (found->lines.isEmpty()) {
+            return OutboundOrderDetailResult {
+                false,
+                std::nullopt,
+                AppError::repositoryFailure(QStringLiteral("获取订单详情失败,订单详情行查询异常"))
+            };
+        }
+
+        OutboundOrderDetailDto detail;
+        detail.id = found->id;
+        detail.orderNo = found->orderNo;
+        detail.recipient = found->recipient;
+        detail.status = found->status;
+        detail.operatorId = found->operatorId;
+        detail.operatorName = operatorNames.value(found->operatorId);
+        detail.warehouseId = found->warehouseId;
+        detail.warehouseName = warehouseNames.value(found->warehouseId);
+        detail.remark = found->remark;
+        detail.createdAt = found->createdAt;
+        detail.updatedAt = found->updatedAt;
+        detail.confirmedAt = found->confirmedAt;
+
+        for (const auto& line : found->lines) {
+            OutboundOrderDetailLineDto detailLine;
+            detailLine.productId = line.productId;
+            detailLine.productCode = productCodes.value(line.productId);
+            detailLine.productName = productNames.value(line.productId);
+            detailLine.quantity = line.quantity;
+            detailLine.unitPrice = line.unitPrice;
+            detailLine.subtotal = line.unitPrice * line.quantity;
+            detail.detailLines.append(detailLine);
+            detail.totalQuantity += detailLine.quantity;
+            detail.totalAmount += detailLine.subtotal;
+        }
+        detail.lineCount = detail.detailLines.size();
+
+        return OutboundOrderDetailResult { true, detail, std::nullopt };
+    }
+
     // 挂起状态
     QVector<PendingListOp> pendingListOps_;
 
@@ -827,6 +982,10 @@ private:
     QString pendingFindByOrderNoOrderNo_;
     QPointer<QObject> pendingFindByOrderNoOwner_;
 
+    DetailCallback pendingGetOrderDetailCallback_;
+    quint32 pendingGetOrderDetailId_ { 0 };
+    QPointer<QObject> pendingGetOrderDetailOwner_;
+
     void resetPendingFindById() noexcept
     {
         pendingFindByIdCallback_ = nullptr;
@@ -839,6 +998,13 @@ private:
         pendingFindByOrderNoCallback_ = nullptr;
         pendingFindByOrderNoOrderNo_.clear();
         pendingFindByOrderNoOwner_.clear();
+    }
+
+    void resetPendingGetOrderDetail() noexcept
+    {
+        pendingGetOrderDetailCallback_ = nullptr;
+        pendingGetOrderDetailId_ = 0;
+        pendingGetOrderDetailOwner_.clear();
     }
 
     quint32 nextId_ { 1 };

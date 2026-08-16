@@ -2,8 +2,11 @@
 #include "MySqlAuditLogRepository.h"
 #include <QUuid>
 #include <QVariantMap>
+#include <optional>
 int MySqlInboundRepository::headerColumns = 10;
 int MySqlInboundRepository::linesColumns = 5;
+int MySqlInboundRepository::detailHeaderColumns = 12;
+int MySqlInboundRepository::detailLineColumns = 6;
 MySqlInboundRepository::MySqlInboundRepository(
     DatabaseExecutor& executor,
     QObject* parent)
@@ -50,7 +53,7 @@ AppError MySqlInboundRepository::mapDatabaseErrorToAppError(
             }
         }
     }
-    //一般错误
+    // 一般错误
     switch (error.code) {
     case DatabaseErrorCode::QueueFull:
         return AppError::repositoryFailure(QStringLiteral("数据库任务队列已满,请稍后重试"));
@@ -130,6 +133,79 @@ std::optional<InboundOrderLine> MySqlInboundRepository::mapInboundOrderLine(
     if (line.id == 0 || line.orderId == 0 || line.productId == 0 || line.quantity <= 0 || line.unitPrice < 0.0)
         return std::nullopt;
     return line;
+}
+// 将订单头映射为订单头详情Dto
+std::optional<InboundOrderDetailDto> MySqlInboundRepository::mapInboundOrderDetailHeader(
+    const QStringList& columns,
+    const QVariantList& row)
+{
+    InboundOrderDetailDto header;
+    if (columns.size() != row.size())
+        return std::nullopt;
+    for (int i = 0; i < columns.size(); ++i) {
+        const QString& colName = columns[i];
+        if (colName == "id") {
+            header.id = row[i].toUInt();
+        } else if (colName == "orderNo") {
+            header.orderNo = row[i].toString();
+        } else if (colName == "supplier") {
+            header.supplier = row[i].toString();
+        } else if (colName == "status") {
+            header.status = mapDatabaseStatusToEnum(row[i].toString());
+        } else if (colName == "operatorId") {
+            header.operatorId = row[i].toUInt();
+        } else if (colName == "operatorName") {
+            header.operatorName = row[i].toString();
+        } else if (colName == "warehouseId") {
+            header.warehouseId = row[i].toUInt();
+        } else if (colName == "warehouseName") {
+            header.warehouseName = row[i].toString();
+        } else if (colName == "remark") {
+            header.remark = row[i].toString();
+        } else if (colName == "createdAt") {
+            header.createdAt = row[i].toDateTime();
+        } else if (colName == "updatedAt") {
+            header.updatedAt = row[i].toDateTime();
+        } else if (colName == "confirmedAt") {
+ if(!row[i].isNull())           header.confirmedAt = row[i].toDateTime();
+        }
+    }
+    if (header.id == 0 || header.orderNo.trimmed().isEmpty() || header.supplier.trimmed().isEmpty() || header.operatorId == 0 || header.warehouseId == 0 || header.operatorName.trimmed().isEmpty() || header.warehouseName.trimmed().isEmpty() || (header.status == InboundOrderStatus::Confirmed && !header.confirmedAt.has_value()))
+        return std::nullopt;
+    return std::make_optional<InboundOrderDetailDto>(header);
+}
+// 将订单行映射为订单行详情Dto
+std::optional<InboundOrderDetailLineDto> MySqlInboundRepository::mapInboundOrderDetailLine(
+    const QStringList& columns,
+    const QVariantList& row)
+{
+    if (columns.size() != row.size())
+        return std::nullopt;
+    InboundOrderDetailLineDto line;
+    for (int i = 0; i < columns.size(); ++i) {
+        const QString& colName = columns[i];
+        if (colName == "productId") {
+            line.productId = row[i].toUInt();
+        }
+        else if (colName == "productCode") {
+            line.productCode = row[i].toString();
+        }
+        else if (colName == "productName") {
+            line.productName = row[i].toString();
+        }
+       else  if (colName == "quantity") {
+            line.quantity = row[i].toInt();
+        }
+       else  if (colName == "unitPrice") {
+            line.unitPrice = row[i].toDouble();
+        }
+        else if (colName == "subtotal") {
+            line.subtotal = row[i].toDouble();
+        }
+    }
+    if (line.productId == 0 || line.productCode.trimmed().isEmpty() || line.productName.trimmed().isEmpty() || line.quantity <= 0 || line.unitPrice < 0.0 || line.subtotal < 0.0)
+        return std::nullopt;
+    return std::make_optional<InboundOrderDetailLineDto>(line);
 }
 // 执行器任务完成后处理结果
 void MySqlInboundRepository::onTaskFinished(const DatabaseResult& result)
@@ -488,11 +564,17 @@ void MySqlInboundRepository::listOrders(
     DatabaseTask task;
     task.type = DatabaseTaskType::Transaction;
     task.requestId = QUuid::createUuid();
+    // from语句
+    const QString fromSql = QStringLiteral(R"(
+    FROM inbound_orders o 
+    JOIN warehouses w ON w.id = o.warehouse_id  
+    JOIN users u ON u.id = o.operator_id 
+)");
     // 构建where查询条件
     QStringList whereConditions; // 条件
     QVariantMap parametersMap; // 参数映射
     if (!filter.keyword.trimmed().isEmpty()) { // 关键字
-        whereConditions << QStringLiteral("(o.order_no LIKE :keyword OR o.supplier LIKE :keyword OR o.remark LIKE :keyword)");
+        whereConditions << QStringLiteral("(o.order_no LIKE :keyword OR o.supplier LIKE :keyword OR o.remark LIKE :keyword OR u.real_name LIKE :keyword OR w.name LIKE :keyword OR w.code LIKE :keyword OR u.username LIKE :keyword) ");
         parametersMap.insert("keyword", "%" + filter.keyword.trimmed() + "%");
     }
     if (filter.status.has_value()) { // 状态
@@ -507,7 +589,7 @@ void MySqlInboundRepository::listOrders(
     // 1.查询总记录数
     DatabaseStatement statement1;
     statement1.type = StatementType::Query;
-    statement1.sql = QStringLiteral("SELECT COUNT(*) as total FROM inbound_orders o ") + whereResult;
+    statement1.sql = QStringLiteral("SELECT COUNT(*) as total ") + fromSql + whereResult;
     statement1.parameters = parametersMap;
     task.statements.append(statement1);
     // 2.查询分页数据
@@ -527,15 +609,13 @@ void MySqlInboundRepository::listOrders(
             COALESCE(SUM(d.quantity), 0) AS totalQuantity,
             o.created_at AS createdAt,
             o.updated_at AS updatedAt,
-            o.confirmed_at AS confirmedAt
-        FROM inbound_orders o
-        JOIN warehouses w ON w.id = o.warehouse_id
-        JOIN users u ON u.id = o.operator_id
+            o.confirmed_at AS confirmedAt )")
+        + fromSql + QStringLiteral(R"(
         LEFT JOIN inbound_details d ON d.order_id = o.id
     )") + whereResult
         + QStringLiteral(R"(
         GROUP BY o.id, o.order_no, o.supplier, o.status, o.warehouse_id, w.name, o.operator_id, u.real_name, o.created_at, o.updated_at, o.confirmed_at
-        ORDER BY o.created_at DESC
+        ORDER BY o.created_at DESC,o.id DESC
         LIMIT :limit OFFSET :offset
     )");
     statement2.parameters = parametersMap;
@@ -1102,5 +1182,159 @@ void MySqlInboundRepository::confirmOrder(
                                                         });
                                                     } });
 
+    executor_.submitTask(task);
+}
+// 获取订单详情
+void MySqlInboundRepository::getOrderDetail(
+    quint32 id,
+    QObject* owner,
+    DetailCallback callback)
+{
+    // 校验参数
+    QPointer<QObject> ownerPtr(owner);
+    if (ownerPtr.isNull() || !callback)
+        return;
+    if (id == 0) {
+        callback(InboundOrderDetailResult {
+            false,
+            std::nullopt,
+            AppError::repositoryFailure(QStringLiteral("获取订单详情失败,订单id无效")) });
+        return;
+    }
+    // 构建查询语句
+    // 1.查询表头信息
+    DatabaseStatement statement1;
+    statement1.type = StatementType::Query;
+    statement1.sql = QStringLiteral(R"(SELECT 
+o.id as id,
+o.order_no as orderNo, 
+o.supplier, 
+o.status, 
+o.operator_id as operatorId,
+u.real_name as operatorName,
+o.warehouse_id as warehouseId,
+w.name as warehouseName,
+o.remark,
+o.created_at as createdAt,
+o.updated_at as updatedAt, 
+o.confirmed_at as confirmedAt
+FROM inbound_orders o 
+JOIN warehouses w 
+ON o.warehouse_id = w.id
+JOIN users u ON  o.operator_id = u.id WHERE o.id = :id)");
+    statement1.parameters.insert("id", id);
+    // 2.查询订单行信息
+    DatabaseStatement statement2;
+    statement2.type = StatementType::Query;
+    statement2.sql = QStringLiteral(R"(SELECT 
+    p.id as productId ,
+    p.code as productCode,
+    p.name as productName,
+    i.quantity as quantity,
+    i.unit_price as unitPrice,
+    i.unit_price * i.quantity as subtotal 
+FROM inbound_details i JOIN products p ON p.id = i.product_id WHERE i.order_id = :id ORDER BY i.id ASC)");
+    statement2.parameters.insert("id", id);
+    // 构建任务
+    DatabaseTask task;
+    task.type = DatabaseTaskType::Transaction;
+    task.requestId = QUuid::createUuid();
+    task.statements.append(statement1);
+    task.statements.append(statement2);
+    pending_.insert(task.requestId, PendingRequest { ownerPtr, [ownerPtr, callback = std::move(callback)](const DatabaseResult& result) {
+                                                        // 校验参数
+                                                        if (ownerPtr.isNull() || !callback)
+                                                            return;
+                                                        if (!result.isSucceeded()) {
+                                                            callback(InboundOrderDetailResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                mapDatabaseErrorToAppError(result.error) });
+                                                            return;
+                                                        }
+                                                        // 如果结果的查询结果数量不是2条,则返回错误
+                                                        if (result.statementResults.size() != 2) {
+                                                            callback(InboundOrderDetailResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError::repositoryFailure(QStringLiteral("获取订单详情失败,查询结果异常")) });
+                                                            return;
+                                                        }
+                                                        // 获取订单头
+                                                        const auto& headerResult = result.statementResults[0];
+                                                        if (headerResult.rows.isEmpty()) {
+                                                            callback(InboundOrderDetailResult {
+                                                                false,
+                                                                std::nullopt,
+                                                                AppError {
+                                                                    AppErrorCategory::Database,
+                                                                    AppErrorCode::InboundOrderNotFound,
+                                                                    QStringLiteral("入库订单不存在") } });
+                                                            return;
+                                                        }
+                                                        if ( headerResult.columns.size() != detailHeaderColumns) {
+                                                            callback(
+                                                                InboundOrderDetailResult {
+                                                                    false,
+                                                                    std::nullopt,
+                                                                    AppError::repositoryFailure(QStringLiteral("获取订单详情失败,查询结果异常")) });
+                                                            return;
+                                                        }
+                                                        // 映射为订单HeaderDto
+                                                         auto detailHeader = mapInboundOrderDetailHeader(headerResult.columns, headerResult.rows[0]);
+                                                        if (!detailHeader.has_value()) {
+                                                            callback(
+                                                                InboundOrderDetailResult {
+                                                                    false,
+                                                                    std::nullopt,
+                                                                    AppError::repositoryFailure(QStringLiteral("获取订单详情失败,订单头映射异常")) });
+                                                            return;
+                                                        }
+                                                        // 获取订单行信息
+                                                        const auto& LineResult = result.statementResults[1];
+                                                        if (LineResult.rows.isEmpty() || LineResult.columns.size() != detailLineColumns) {
+                                                            callback(
+                                                                InboundOrderDetailResult {
+                                                                    false,
+                                                                    std::nullopt,
+                                                                    AppError::repositoryFailure(QStringLiteral("获取订单详情失败,订单详情行查询异常")) });
+                                                            return;
+                                                        }
+                                                        // 逐行添加
+                                                        for (const auto& row : LineResult.rows) {
+                                                            const auto detailLine = mapInboundOrderDetailLine(LineResult.columns, row);
+                                                            if (!detailLine.has_value()) {
+                                                                callback(
+                                                                    InboundOrderDetailResult {
+                                                                        false,
+                                                                        std::nullopt,
+                                                                        AppError::repositoryFailure(QStringLiteral("获取订单详情失败,订单详情行映射异常")) });
+                                                                return;
+                                                            }
+                                                            detailHeader->detailLines.append(detailLine.value());
+                                                            detailHeader->totalQuantity += detailLine->quantity;
+                                                            detailHeader->totalAmount += detailLine->subtotal;
+                                                        }
+
+                                                        if (detailHeader->detailLines.isEmpty()) {
+                                                            callback(
+                                                                InboundOrderDetailResult {
+                                                                    false,
+                                                                    std::nullopt,
+                                                                    AppError {
+                                                                        AppErrorCategory::Validation,
+                                                                        AppErrorCode::InvalidInboundOrder,
+                                                                        QStringLiteral("入库订单明细为空，订单数据异常") } });
+                                                            return;
+                                                        }
+                                                        detailHeader->lineCount = detailHeader->detailLines.size();
+
+                                                        callback(
+                                                            InboundOrderDetailResult {
+                                                                true,
+                                                                detailHeader.value(),
+                                                                std::nullopt });
+                                                    } });
+    // 最后提交任务
     executor_.submitTask(task);
 }

@@ -26,7 +26,8 @@ public:
         const PageRequest& request,
         QObject* owner,
         PageCallback callback_) override;
-
+    // 列出产品选项(默认仅激活)
+    void listProductOptions(QObject* owner, OptionsCallback callback,bool activeOnly = true) override;
     // 通过编码查找产品
     void findByCode(
         const QString& code,

@@ -505,3 +505,109 @@ void OutboundService::confirmOrder(
             std::nullopt });
     });
 }
+// 获取订单详情
+void OutboundService::getOrderDetail(
+    quint32 id,
+    QObject* owner,
+    DetailCallback callback)
+{
+    QPointer<QObject> ownerPtr(owner);
+    if (ownerPtr.isNull() || !callback) {
+        return;
+    }
+    if (auto error1 = authorize(Permission::ViewOutboundOrders); error1.has_value()) {
+        callback(OutboundOrderDetailResult {
+            false,
+            std::nullopt,
+            error1 });
+        return;
+    }
+    if (id == 0) {
+        callback(OutboundOrderDetailResult {
+            false,
+            std::nullopt,
+            AppError {
+                AppErrorCategory::Validation,
+                AppErrorCode::InvalidInput,
+                QStringLiteral("订单ID无效") } });
+        return;
+    }
+    repository_.getOrderDetail(id, ownerPtr.data(), [ownerPtr, callback = std::move(callback)](const OutboundOrderDetailResult& result) {
+        if (ownerPtr.isNull() || !callback)
+            return;
+        if (!result.success) {
+            callback(OutboundOrderDetailResult {
+                false,
+                std::nullopt,
+                result.error.has_value() ? result.error : AppError { AppErrorCategory::Database, AppErrorCode::RepositoryFailure, QStringLiteral("获取订单详情时出现未知错误") } });
+            return;
+        }
+        if (result.error.has_value()) {
+            callback(OutboundOrderDetailResult {
+                false,
+                std::nullopt,
+                result.error });
+            return;
+        }
+        if (!result.orderDetail.has_value()) {
+            callback(OutboundOrderDetailResult {
+                false,
+                std::nullopt,
+                AppError {
+                    AppErrorCategory::Validation,
+                    AppErrorCode::InvalidOutboundOrder,
+                    QStringLiteral("获取订单详情后未返回有效数据") } });
+            return;
+        }
+        const auto& orderDetail = result.orderDetail.value();
+        if (orderDetail.id == 0 || orderDetail.operatorId == 0 || orderDetail.orderNo.trimmed().isEmpty() || orderDetail.recipient.trimmed().isEmpty() || orderDetail.warehouseId == 0 || orderDetail.operatorName.trimmed().isEmpty() || orderDetail.warehouseName.trimmed().isEmpty() || orderDetail.lineCount == 0 || orderDetail.totalQuantity == 0 || orderDetail.totalAmount < 0.0 || orderDetail.detailLines.isEmpty() || !orderDetail.createdAt.isValid() || !orderDetail.updatedAt.isValid() || (orderDetail.confirmedAt.has_value() && !orderDetail.confirmedAt->isValid())) {
+            callback(OutboundOrderDetailResult {
+                false,
+                std::nullopt,
+                AppError {
+                    AppErrorCategory::Validation,
+                    AppErrorCode::InvalidOutboundOrder,
+                    QStringLiteral("订单详情数据无效") } });
+            return;
+        }
+        if ((orderDetail.status == OutboundOrderStatus::Confirmed && !orderDetail.confirmedAt.has_value()) || (orderDetail.status == OutboundOrderStatus::Draft && orderDetail.confirmedAt.has_value())) {
+            callback(OutboundOrderDetailResult {
+                false,
+                std::nullopt,
+                AppError {
+                    AppErrorCategory::Validation,
+                    AppErrorCode::InvalidOutboundOrder,
+                    QStringLiteral("订单状态无效") } });
+            return;
+        }
+        int lineCount = 0;
+        int totalQuantity = 0;
+        double totalAmount = 0.0;
+        for (const auto& line : orderDetail.detailLines) {
+            ++lineCount;
+            totalQuantity += line.quantity;
+            totalAmount += line.subtotal;
+            if (line.productId == 0 || line.productCode.trimmed().isEmpty() || line.productName.trimmed().isEmpty() || line.quantity <= 0 || line.unitPrice < 0.0 || line.subtotal < 0.0 || !qFuzzyCompare(line.subtotal + 1.0, line.unitPrice * line.quantity + 1.0)) {
+                callback(OutboundOrderDetailResult {
+                    false,
+                    std::nullopt,
+                    AppError {
+                        AppErrorCategory::Validation,
+                        AppErrorCode::InvalidOutboundOrder,
+                        QStringLiteral("订单详情数据无效") } });
+                return;
+            }
+        }
+        if (lineCount != orderDetail.lineCount || totalQuantity != orderDetail.totalQuantity || !qFuzzyCompare(totalAmount + 1.0, orderDetail.totalAmount + 1.0)) {
+            callback(OutboundOrderDetailResult {
+                false,
+                std::nullopt,
+                AppError {
+                    AppErrorCategory::Validation,
+                    AppErrorCode::InvalidOutboundOrder,
+                    QStringLiteral("订单详情汇总数据无效") } });
+            return;
+        }
+        callback(result);
+    });
+}

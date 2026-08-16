@@ -120,7 +120,7 @@ void ProductPage::showInformationMessage(const QString& message)
 void ProductPage::setPageState(ProductPageState state)
 {
     currentPageState_ = state;
-    if(pageNavigator_)
+    if (pageNavigator_)
         pageNavigator_->setLoading(currentPageState_ == ProductPageState::Loading);
     updateActions(); // 更新按钮状态
 }
@@ -162,13 +162,13 @@ void ProductPage::reloadCurrentPage()
             }
             // 设置页面
             tableModel_->setPage(result.page);
-            pageNavigator_->updatePageInfo(result.page.page, tableModel_->totalPages());
             if (result.page.items.isEmpty()) {
                 setPageState(ProductPageState::Empty);
+                pageNavigator_->updatePageInfo(tableModel_->page(), tableModel_->totalPages());
                 return;
-            } else {
-                setPageState(ProductPageState::Ready);
             }
+            setPageState(ProductPageState::Ready);
+            pageNavigator_->updatePageInfo(tableModel_->page(), tableModel_->totalPages());
         });
 }
 // 获取当前选中的产品DTO
