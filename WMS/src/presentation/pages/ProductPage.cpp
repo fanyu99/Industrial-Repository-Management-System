@@ -20,6 +20,10 @@ ProductPage::ProductPage(ProductService* ps, MasterDataService* masterDataServic
     }
     this->setObjectName(QStringLiteral("ProductPage"));
     // 创建表格视图
+    emptyLabel_ = new QLabel(QStringLiteral("暂无产品"), this);
+    emptyLabel_->setAlignment(Qt::AlignCenter);
+    emptyLabel_->hide(); // 隐藏,仅页面空状态显示
+    emptyLabel_->setObjectName(QStringLiteral("ProductPage_emptyLabel"));
     tableView_ = new QTableView(this);
     tableView_->setObjectName(QStringLiteral("ProductPage_tableView"));
     tableView_->setModel(tableModel_);
@@ -35,8 +39,70 @@ ProductPage::ProductPage(ProductService* ps, MasterDataService* masterDataServic
     tableView_->setColumnWidth(static_cast<int>(ProductTableModel::Column::SafetyStockColumn), 80);
     tableView_->setColumnWidth(static_cast<int>(ProductTableModel::Column::ActiveColumn), 60);
     selectionModel_ = tableView_->selectionModel();
+    // 搜索栏
+    keywordLineEdit_ = new QLineEdit(this);
+    keywordLineEdit_->setPlaceholderText(QStringLiteral("请输入产品名称/编码/规格描述"));
+    keywordLineEdit_->setObjectName(QStringLiteral("ProductPage_keywordLineEdit"));
+    clearKeywordBtn_ = new QPushButton(QStringLiteral("\u2715"), this);
+    clearKeywordBtn_->setObjectName(QStringLiteral("ProductPage_clearKeywordBtn"));
+    clearKeywordBtn_->setFixedSize(24, 24);
+    clearKeywordBtn_->setToolTip(QStringLiteral("清除关键词"));
+    clearKeywordBtn_->setVisible(false);
+    clearKeywordBtn_->setCursor(Qt::PointingHandCursor);
+    categoryComboBox_ = new QComboBox(this);
+    categoryComboBox_->setObjectName(QStringLiteral("ProductPage_categoryComboBox"));
+    categoryComboBox_->addItem(QStringLiteral("全部"));
+    categoryComboBox_->setPlaceholderText(QStringLiteral("请选择分类"));
+    categoryComboBox_->setCurrentIndex(0);
+    searchBtn_ = new QPushButton(QStringLiteral("搜索"), this);
+    searchBtn_->setObjectName(QStringLiteral("ProductPage_searchBtn"));
+    clearBtn_ = new QPushButton(QStringLiteral("清除条件"), this);
+    clearBtn_->setObjectName(QStringLiteral("ProductPage_clearBtn"));
+    activeOnlyCheckBox_ = new QCheckBox(QStringLiteral("仅显示启用"), this);
+    activeOnlyCheckBox_->setObjectName(QStringLiteral("ProductPage_activeOnlyCheckBox"));
+    activeOnlyCheckBox_->setToolTip(QStringLiteral("仅显示已启用的产品"));
+    activeOnlyCheckBox_->setChecked(false); // 默认不勾选（显示所有产品）
+    // 连接信号
+    connect(searchBtn_, &QPushButton::clicked, this, &ProductPage::onSearchClicked);
+    connect(keywordLineEdit_, &QLineEdit::returnPressed, this, &ProductPage::onSearchClicked);
+    connect(clearBtn_, &QPushButton::clicked, this, &ProductPage::onClearClicked);
+    connect(clearKeywordBtn_, &QPushButton::clicked, this, &ProductPage::onClearKeywordClicked);
+    connect(keywordLineEdit_, &QLineEdit::textChanged, this, [this](const QString& text) {
+        clearKeywordBtn_->setVisible(!text.trimmed().isEmpty());
+    });
+
+    // 搜索栏布局
+    QHBoxLayout* searchLayout = new QHBoxLayout();
+    QWidget* keywordContainer = new QWidget(this);
+    keywordContainer->setObjectName(QStringLiteral("ProductPage_keywordContainer"));
+    QHBoxLayout* keywordLayout = new QHBoxLayout(keywordContainer);
+    keywordLayout->setContentsMargins(0, 0, 0, 0);
+    keywordLayout->setSpacing(2);
+    keywordLayout->addWidget(keywordLineEdit_);
+    keywordLayout->addWidget(clearKeywordBtn_);
+    searchLayout->addWidget(keywordContainer);
+    searchLayout->addWidget(categoryComboBox_);
+    searchLayout->addWidget(activeOnlyCheckBox_);
+    searchLayout->addWidget(searchBtn_);
+    searchLayout->addWidget(clearBtn_);
+    searchLayout->setObjectName(QStringLiteral("ProductPage_searchLayout"));
+    searchLayout->setStretch(0, 4);
+    searchLayout->setStretch(1, 2);
+    searchLayout->setStretch(2, 1);
+    searchLayout->setStretch(3, 1);
+    searchLayout->setStretch(4, 1);
+
+    // 搜索栏
+    QWidget* searchWidget = new QWidget(this);
+    searchWidget->setLayout(searchLayout);
+    searchWidget->setObjectName(QStringLiteral("ProductPage_searchWidget"));
+
     // 总布局
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
+
+    // 添加搜索栏到布局
+    mainLayout->addWidget(searchWidget);
+
     // 按钮布局
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     createBtn = new QPushButton(QStringLiteral("创建产品"), this);
@@ -72,8 +138,22 @@ ProductPage::ProductPage(ProductService* ps, MasterDataService* masterDataServic
         reloadCurrentPage();
     });
 
+    // 加载分类搜索选项
+    loadCategorySearchOptions();
+
     reloadCurrentPage();
     updateActions();
+}
+// 设置筛选器
+void ProductPage::setCurrentFilter(const ProductFilter& filter)
+{
+    currentFilter_ = filter;
+    reloadCurrentPage();
+}
+// 获取当前分页请求参数
+PageRequest ProductPage::currentPageRequest() const
+{
+    return currentRequest_;
 }
 // 将错误映射为标题
 QString ProductPage::errorToTitle(const AppError& error) const
@@ -122,6 +202,8 @@ void ProductPage::setPageState(ProductPageState state)
     currentPageState_ = state;
     if (pageNavigator_)
         pageNavigator_->setLoading(currentPageState_ == ProductPageState::Loading);
+    if (emptyLabel_)
+        emptyLabel_->setVisible(currentPageState_ == ProductPageState::Empty);
     updateActions(); // 更新按钮状态
 }
 // 重新加载当前页面(以最新的请求为主)
@@ -140,6 +222,9 @@ void ProductPage::reloadCurrentPage()
         return;
     }
     setPageState(ProductPageState::Loading);
+
+    loadCategorySearchOptions();
+
     // 采用重新查询方式刷新页面数据
     // 使用ProductService来进行获取产品列表(刷新当前页面)
     productService_->listProducts(
@@ -459,14 +544,150 @@ void ProductPage::onSetActiveClicked()
 // 更新操作按钮的状态
 void ProductPage::updateActions()
 {
-    bool loading = (currentPageState_ == ProductPageState::Loading);
+    const bool loading = currentPageState_ == ProductPageState::Loading || categoryOptionsLoading_;
+    bool isError = (currentPageState_ == ProductPageState::Error);
     bool hasSelection = selectedProductDto().has_value();
     bool canCreate = productService_ && productService_->hasPermission(Permission::CreateProducts);
     bool canEdit = productService_ && productService_->hasPermission(Permission::EditProducts);
     bool canDisable = productService_ && productService_->hasPermission(Permission::DisableProducts);
     // 设置按钮的状态
-    createBtn->setEnabled(!loading && canCreate);
-    reloadBtn->setEnabled(!loading);
-    editBtn->setEnabled(!loading && hasSelection && canEdit && currentPageState_ == ProductPageState::Ready);
-    setActiveBtn->setEnabled(!loading && hasSelection && canDisable && currentPageState_ == ProductPageState::Ready);
+    if(tableView_)tableView_->setEnabled(!loading && !isError);
+    if(createBtn)createBtn->setEnabled(!loading && canCreate);
+    if(reloadBtn)reloadBtn->setEnabled(!loading);
+    if(editBtn)editBtn->setEnabled(!loading && hasSelection && canEdit && currentPageState_ == ProductPageState::Ready);
+    if(setActiveBtn)setActiveBtn->setEnabled(!loading && hasSelection && canDisable && currentPageState_ == ProductPageState::Ready);
+
+    // 设置搜索栏控件状态
+    if (keywordLineEdit_)
+        keywordLineEdit_->setEnabled(!loading);
+    if (categoryComboBox_)
+        categoryComboBox_->setEnabled(!loading);
+    if (activeOnlyCheckBox_)
+        activeOnlyCheckBox_->setEnabled(!loading);
+    if (searchBtn_)
+        searchBtn_->setEnabled(!loading);
+    if (clearBtn_)
+        clearBtn_->setEnabled(!loading);
+}
+
+// 从控件读取筛选器
+ProductFilter ProductPage::readFilterFromControls() const
+{
+    ProductFilter filter;
+    if (!keywordLineEdit_ || !categoryComboBox_)
+        return filter;
+
+    // 关键字（编号/名称/规格）
+    filter.keyword = keywordLineEdit_->text().trimmed();
+
+    // 分类
+    const QVariant categoryData = categoryComboBox_->currentData();
+    bool ok = false;
+    const quint32 categoryId = categoryData.toUInt(&ok);
+    if (ok && categoryId > 0)
+        filter.categoryId = categoryId;
+
+    // 激活状态（仅显示启用的产品）
+    if (activeOnlyCheckBox_ && activeOnlyCheckBox_->isChecked()) {
+        filter.active = true;
+    } else {
+        filter.active = std::nullopt; // 不筛选，显示所有状态的产品
+    }
+
+    return filter;
+}
+
+// 重置筛选器控件
+void ProductPage::resetFilterControls()
+{
+    if (keywordLineEdit_)
+        keywordLineEdit_->clear();
+    if (categoryComboBox_)
+        categoryComboBox_->setCurrentIndex(0);
+    if (activeOnlyCheckBox_)
+        activeOnlyCheckBox_->setChecked(false); // 重置为不勾选（显示所有产品）
+}
+
+// 搜索
+void ProductPage::onSearchClicked()
+{
+    currentFilter_ = readFilterFromControls();
+    currentRequest_.page = 1;
+    reloadCurrentPage();
+}
+
+// 清除搜索
+void ProductPage::onClearClicked()
+{
+    resetFilterControls();
+    currentFilter_ = {};
+    currentRequest_.page = 1;
+    reloadCurrentPage();
+}
+
+// 清除关键词
+void ProductPage::onClearKeywordClicked()
+{
+    if (keywordLineEdit_) {
+        keywordLineEdit_->clear();
+        keywordLineEdit_->setFocus();
+    }
+}
+
+// 加载分类搜索选项
+void ProductPage::loadCategorySearchOptions()
+{
+    if (!masterDataService_) {
+        showErrorMessage(QStringLiteral("基础数据服务不可用"));
+        return;
+    }
+    if (!categoryComboBox_)
+        return;
+
+    categoryOptionsLoading_ = true;
+    updateActions();
+
+    // 移除除了"全部"的所有选项
+    while (categoryComboBox_->count() > 1) {
+        categoryComboBox_->removeItem(1);
+    }
+
+    // 加载分类（包括停用的分类，因为搜索时可能需要查看停用分类的产品）
+    masterDataService_->listCategories(
+        this,
+        false,
+        [this](const CategoryListResult& result) {
+            if (!result.success) {
+                showErrorMessage(QStringLiteral("加载分类数据失败"));
+                categoryOptionsLoading_ = false;
+                updateActions();
+                return;
+            }
+            if (!result.categories.has_value()) {
+                showErrorMessage(QStringLiteral("未返回有效分类数据"));
+                categoryOptionsLoading_ = false;
+                updateActions();
+                return;
+            }
+
+            if (!categoryComboBox_) {
+                categoryOptionsLoading_ = false;
+                updateActions();
+                return;
+            }
+
+            // 添加分类选项
+            for (const auto& category : result.categories.value()) {
+                const QString categoryName = category.name;
+                const quint32 categoryId = category.id;
+                if (categoryId == 0)
+                    continue;
+                if (categoryName.trimmed().isEmpty())
+                    continue;
+                categoryComboBox_->addItem(categoryName, categoryId);
+            }
+
+            categoryOptionsLoading_ = false;
+            updateActions();
+        });
 }

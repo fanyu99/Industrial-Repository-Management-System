@@ -36,7 +36,7 @@ OutboundPage::OutboundPage(OutboundService* outboundService, ProductService* pro
     statusCombo_->setObjectName(QStringLiteral("OutboundPage_statusCombo"));
     statusCombo_->setPlaceholderText(QStringLiteral("请选择状态"));
     statusCombo_->addItem(QStringLiteral("所有状态"), QVariant());
-    statusCombo_->addItem(QStringLiteral("草稿"), static_cast<int>(OutboundOrderStatus::Draft));
+    statusCombo_->addItem(QStringLiteral("待处理"), static_cast<int>(OutboundOrderStatus::Draft));
     statusCombo_->addItem(QStringLiteral("已确认"), static_cast<int>(OutboundOrderStatus::Confirmed));
     statusCombo_->addItem(QStringLiteral("已取消"), static_cast<int>(OutboundOrderStatus::Cancelled));
     statusCombo_->setCurrentIndex(0);
@@ -51,15 +51,32 @@ OutboundPage::OutboundPage(OutboundService* outboundService, ProductService* pro
     searchBtn->setObjectName(QStringLiteral("OutboundPage_searchBtn"));
     clearSearchBtn = new QPushButton(QStringLiteral("清除条件"), this);
     clearSearchBtn->setObjectName(QStringLiteral("OutboundPage_clearSearchBtn"));
+    keywordClearBtn = new QPushButton(QStringLiteral("\u2715"), this);
+    keywordClearBtn->setObjectName(QStringLiteral("OutboundPage_keywordClearBtn"));
+    keywordClearBtn->setFixedSize(24, 24);
+    keywordClearBtn->setToolTip(QStringLiteral("清除关键词"));
+    keywordClearBtn->setVisible(false);
+    keywordClearBtn->setCursor(Qt::PointingHandCursor);
 
     QHBoxLayout* searchLayout = new QHBoxLayout();
-    searchLayout->addWidget(keywordEdit_);
+    QWidget* keywordContainer = new QWidget(this);
+    keywordContainer->setObjectName(QStringLiteral("OutboundPage_keywordContainer"));
+    QHBoxLayout* keywordLayout = new QHBoxLayout(keywordContainer);
+    keywordLayout->setContentsMargins(0, 0, 0, 0);
+    keywordLayout->setSpacing(2);
+    keywordLayout->addWidget(keywordEdit_);
+    keywordLayout->addWidget(keywordClearBtn);
+    searchLayout->addWidget(keywordContainer);
     searchLayout->addWidget(statusCombo_);
     searchLayout->addWidget(warehouseCombo_);
     searchLayout->addWidget(searchBtn);
     searchLayout->addWidget(clearSearchBtn);
-    searchLayout->addStretch(1);
     searchLayout->setObjectName(QStringLiteral("OutboundPage_searchLayout"));
+    searchLayout->setStretch(0, 4);
+    searchLayout->setStretch(1, 2);
+    searchLayout->setStretch(2, 2);
+    searchLayout->setStretch(3, 1);
+    searchLayout->setStretch(4, 1);
 
     QWidget* searchWidget = new QWidget(this);
     searchWidget->setLayout(searchLayout);
@@ -67,8 +84,17 @@ OutboundPage::OutboundPage(OutboundService* outboundService, ProductService* pro
 
     connect(searchBtn, &QPushButton::clicked, this, &OutboundPage::onSearchClicked);
     connect(clearSearchBtn, &QPushButton::clicked, this, &OutboundPage::onClearSearchClicked);
+    connect(keywordClearBtn, &QPushButton::clicked, this, &OutboundPage::onClearKeywordClicked);
+    connect(keywordEdit_, &QLineEdit::textChanged, this, [this](const QString& text) {
+        keywordClearBtn->setVisible(!text.trimmed().isEmpty());
+    });
+    connect(keywordEdit_, &QLineEdit::returnPressed, this, &OutboundPage::onSearchClicked);
 
     // 表格视图
+    emptyLabel_ = new QLabel(QStringLiteral("暂无出库订单"), this);
+    emptyLabel_->setAlignment(Qt::AlignCenter);
+    emptyLabel_->hide(); // 隐藏,仅页面空状态显示
+    emptyLabel_->setObjectName(QStringLiteral("OutboundPage_emptyLabel"));
     tableView_ = new QTableView(this);
     tableView_->setObjectName(QStringLiteral("OutboundPage_tableView"));
     tableView_->setModel(tableModel_);
@@ -178,6 +204,8 @@ void OutboundPage::setPageState(OutboundPageState state)
     currentPageState_ = state;
     if (pageNavigator_)
         pageNavigator_->setLoading(currentPageState_ == OutboundPageState::Loading);
+    if (emptyLabel_)
+        emptyLabel_->setVisible(currentPageState_ == OutboundPageState::Empty);
     updateActions(); // 更新按钮状态
 }
 // 重新加载当前页面(最新请求为准)
@@ -317,7 +345,7 @@ void OutboundPage::loadOutboundDialogOptions(OutboundEditDialog& dialog, bool is
 }
 // 槽函数
 
-// 创建草稿订单
+// 创建待处理订单
 void OutboundPage::onCreateClicked()
 {
     // 校验
@@ -440,6 +468,7 @@ void OutboundPage::updateActions()
     bool canCreate = outboundService_ && outboundService_->hasPermission(Permission::CreateOutboundOrders);
     bool canConfirm = hasSelection && outboundService_ && outboundService_->hasPermission(Permission::ConfirmOutboundOrders) && selectedDto.value().status == OutboundOrderStatus::Draft;
     bool canViewDetail = hasSelection && outboundService_ && outboundService_->hasPermission(Permission::ViewOutboundOrders) && currentPageState_ == OutboundPageState::Ready;
+    tableView_->setEnabled(!isError && !loading);
     // 设置按钮状态
     createBtn->setEnabled(!loading && canCreate);
     confirmBtn->setEnabled(!loading && canConfirm && hasSelection && currentPageState_ == OutboundPageState::Ready);
@@ -447,6 +476,12 @@ void OutboundPage::updateActions()
     reloadBtn->setEnabled(!loading);
     searchBtn->setEnabled(!loading);
     clearSearchBtn->setEnabled(!loading);
+    if (keywordEdit_)
+        keywordEdit_->setEnabled(!loading);
+    if (statusCombo_)
+        statusCombo_->setEnabled(!loading);
+    if (warehouseCombo_)
+        warehouseCombo_->setEnabled(!loading);
 }
 
 OutboundOrderFilter OutboundPage::readFilterFromControls() const
@@ -491,6 +526,12 @@ void OutboundPage::onClearSearchClicked()
     currentFilter_ = {};
     currentRequest_.page = 1;
     reloadCurrentPage();
+}
+
+void OutboundPage::onClearKeywordClicked()
+{
+    keywordEdit_->clear();
+    keywordEdit_->setFocus();
 }
 
 void OutboundPage::loadWarehouseSearchOptions()
@@ -553,7 +594,7 @@ void OutboundPage::onViewDetailClicked()
         showOperationError(AppError::permissionDenied());
         return;
     }
-    if(currentPageState_!=OutboundPageState::Ready)
+    if (currentPageState_ != OutboundPageState::Ready)
         return;
     const quint64 requestSeq = ++detailRequestSeq_;
     outboundService_->getOrderDetail(orderDto.value().id, this, [this, requestSeq](const OutboundOrderDetailResult& result) {
@@ -572,7 +613,7 @@ void OutboundPage::onViewDetailClicked()
             return;
         }
         const auto& orderDetail = result.orderDetail.value();
-        OutboundOrderDetailDialog* dialog=new OutboundOrderDetailDialog(orderDetail, this);
+        OutboundOrderDetailDialog* dialog = new OutboundOrderDetailDialog(orderDetail, this);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
         dialog->open();
     });

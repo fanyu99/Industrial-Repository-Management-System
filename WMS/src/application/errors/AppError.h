@@ -14,6 +14,7 @@ enum class AppErrorCode {
     None, // 无错误
 
     // Auth
+    UserNotFound, // 用户不存在
     InvalidCredentials, // 无效的认证凭证
     UserDisabled, // 用户被禁用
     NotAuthenticated, // 未认证

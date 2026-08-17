@@ -6,8 +6,11 @@
 #include "ProductEditDialog.h"
 #include "ProductService.h"
 #include "ProductTableModel.h"
+#include "qcombobox.h"
+#include <QCheckBox>
 #include <QComboBox>
 #include <QItemSelectionModel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QString>
 #include <QTableView>
@@ -17,8 +20,8 @@ enum class ProductPageState {
     Idle, // 空闲
     Loading, // 加载中
     Ready, // 就绪(有数据)
-    Empty, // 空(无数据)
     Error, // 错误
+    Empty // 空(无数据)
 };
 
 class ProductPage : public QWidget {
@@ -38,6 +41,15 @@ public slots:
     void onCreateClicked(); // 创建产品
     void onEditClicked(); // 编辑产品
     void onSetActiveClicked(); // 设置产品状态(启用/禁用)
+    void onSearchClicked(); // 搜索产品
+    void onClearClicked(); // 清除搜索条件
+    void onClearKeywordClicked(); // 清除关键词
+
+    ProductFilter readFilterFromControls() const; // 从控件读取筛选器
+    void resetFilterControls(); // 重置筛选器控件
+    void loadCategorySearchOptions(); // 加载分类搜索选项
+    void setCurrentFilter(const ProductFilter& filter); // 设置当前筛选器
+    [[nodiscard]] PageRequest currentPageRequest() const; // 获取当前分页请求参数
 private:
     quint64 listRequestSeq_ { 0 }; // 列表请求序列号(用于判断是否是最新的请求)
     QPushButton* createBtn; // 创建产品按钮
@@ -49,10 +61,20 @@ private:
     MasterDataService* masterDataService_; // 仓库基础数据服务
     ProductTableModel* tableModel_; // 产品表格模型
     std::optional<AuthenticatedUser> currentUser_; // 当前会话的用户
+    // 搜索栏
+    QLineEdit* keywordLineEdit_; // 搜索关键词输入框
+    QPushButton* clearKeywordBtn_; // 清除关键词按钮
+    QComboBox* categoryComboBox_; // 分类下拉选择框
+    QCheckBox* activeOnlyCheckBox_; // 仅显示激活状态复选框
+    QPushButton* searchBtn_; // 搜索按钮
+    QPushButton* clearBtn_; // 清除按钮
     ProductFilter currentFilter_; // 筛选条件
     PageRequest currentRequest_; // 当前分页请求参数
+    
     ProductPageState currentPageState_ { ProductPageState::Idle }; // 当前页的状态
+    bool categoryOptionsLoading_ { false }; // 分类选项是否正在加载
     QTableView* tableView_; // 表格视图
+    QLabel* emptyLabel_; // 空状态标签
     QItemSelectionModel* selectionModel_; // 选中模型
     // 获取当前选中的产品
     std::optional<ProductListItemDto> selectedProductDto() const;

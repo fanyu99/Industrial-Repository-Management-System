@@ -106,7 +106,12 @@ public:
 
     [[nodiscard]] bool hasPendingGetOrderDetail() const noexcept
     {
-        return static_cast<bool>(pendingGetOrderDetailCallback_);
+        return !pendingDetailOps_.isEmpty();
+    }
+
+    [[nodiscard]] int pendingGetOrderDetailCount() const noexcept
+    {
+        return pendingDetailOps_.size();
     }
 
     // ===== listOrders 完成 =====
@@ -333,48 +338,55 @@ public:
 
     // ===== getOrderDetail 完成 =====
 
-    void completePendingGetOrderDetail(const InboundOrderDetailResult& result)
+    void completePendingGetOrderDetail(
+        const InboundOrderDetailResult& result,
+        int index = 0)
     {
-        if (!pendingGetOrderDetailCallback_) {
+        if (index < 0 || index >= pendingDetailOps_.size()) {
             return;
         }
-        if (pendingGetOrderDetailOwner_.isNull()) {
-            resetPendingGetOrderDetail();
+        PendingDetailOp op = std::move(pendingDetailOps_[index]);
+        pendingDetailOps_.removeAt(index);
+        if (op.owner.isNull() || !op.callback) {
             return;
         }
-        auto callback = std::move(pendingGetOrderDetailCallback_);
-        resetPendingGetOrderDetail();
-        callback(result);
+        op.callback(result);
     }
 
     // 以成功完成:按挂起时记录的 id 从内存仓库构建详情(与立即完成路径一致)
-    void completePendingGetOrderDetailSuccess()
+    void completePendingGetOrderDetailSuccess(int index = 0)
     {
-        if (!pendingGetOrderDetailCallback_) {
+        if (index < 0 || index >= pendingDetailOps_.size()) {
             return;
         }
-        if (pendingGetOrderDetailOwner_.isNull()) {
-            resetPendingGetOrderDetail();
+        const auto& op = pendingDetailOps_.at(index);
+        if (op.owner.isNull()) {
+            pendingDetailOps_.removeAt(index);
             return;
         }
         // 错误注入优先
         if (nextDetailError.has_value()) {
             const auto error = nextDetailError;
             nextDetailError.reset();
-            auto callback = std::move(pendingGetOrderDetailCallback_);
-            resetPendingGetOrderDetail();
-            callback(InboundOrderDetailResult { false, std::nullopt, error });
+            PendingDetailOp moved = std::move(pendingDetailOps_[index]);
+            pendingDetailOps_.removeAt(index);
+            if (!moved.owner.isNull() && moved.callback) {
+                moved.callback(InboundOrderDetailResult { false, std::nullopt, error });
+            }
             return;
         }
-        const quint32 id = pendingGetOrderDetailId_;
-        auto callback = std::move(pendingGetOrderDetailCallback_);
-        resetPendingGetOrderDetail();
-        callback(performGetOrderDetail(id));
+        const quint32 id = op.id;
+        PendingDetailOp moved = std::move(pendingDetailOps_[index]);
+        pendingDetailOps_.removeAt(index);
+        if (!moved.owner.isNull() && moved.callback) {
+            moved.callback(performGetOrderDetail(id));
+        }
     }
 
-    void completePendingGetOrderDetailError(const AppError& error)
+    void completePendingGetOrderDetailError(const AppError& error, int index = 0)
     {
-        completePendingGetOrderDetail(InboundOrderDetailResult { false, std::nullopt, error });
+        completePendingGetOrderDetail(
+            InboundOrderDetailResult { false, std::nullopt, error }, index);
     }
 
     // ===== 辅助 =====
@@ -418,7 +430,7 @@ public:
         resetPendingConfirm();
         resetPendingFindById();
         resetPendingFindByOrderNo();
-        resetPendingGetOrderDetail();
+        pendingDetailOps_.clear();
         nextId_ = 1;
         nextLineId_ = 1;
     }
@@ -586,9 +598,11 @@ public:
         }
 
         if (deferGetOrderDetail) {
-            pendingGetOrderDetailCallback_ = std::move(callback);
-            pendingGetOrderDetailId_ = id;
-            pendingGetOrderDetailOwner_ = ownerPtr;
+            PendingDetailOp op;
+            op.id = id;
+            op.owner = ownerPtr;
+            op.callback = std::move(callback);
+            pendingDetailOps_.append(std::move(op));
             return;
         }
 
@@ -603,6 +617,13 @@ public:
     }
 
 private:
+    // 一个挂起的 getOrderDetail 请求
+    struct PendingDetailOp {
+        quint32 id { 0 };
+        QPointer<QObject> owner;
+        DetailCallback callback;
+    };
+
     // 一个挂起的 listOrders 请求
     struct PendingListOp {
         PageCallback callback;
@@ -959,14 +980,5 @@ private:
         return InboundOrderDetailResult { true, detail, std::nullopt };
     }
 
-    DetailCallback pendingGetOrderDetailCallback_;
-    quint32 pendingGetOrderDetailId_ { 0 };
-    QPointer<QObject> pendingGetOrderDetailOwner_;
-
-    void resetPendingGetOrderDetail() noexcept
-    {
-        pendingGetOrderDetailCallback_ = nullptr;
-        pendingGetOrderDetailId_ = 0;
-        pendingGetOrderDetailOwner_.clear();
-    }
+    QVector<PendingDetailOp> pendingDetailOps_;
 };

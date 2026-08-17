@@ -1,8 +1,7 @@
 // 配置助手 IniHelper
 #pragma once
 #include <QSettings>
-#include <optional>
-#include <string>
+
 // 配置 错误类型
 enum class ConfigError {
     None, // 无配置错误

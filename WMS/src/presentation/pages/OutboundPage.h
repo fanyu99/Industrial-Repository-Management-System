@@ -41,7 +41,8 @@ public slots:
     void onConfirmClicked(); // 确认订单
     void onReloadClicked(); // 重新加载
     void onSearchClicked(); // 搜索订单
-    void onClearSearchClicked(); // 清除搜索
+    void onClearSearchClicked(); // 清除所有条件
+    void onClearKeywordClicked(); // 清除搜索关键词
     void onViewDetailClicked(); // 查看详情
 
 private:
@@ -50,7 +51,8 @@ private:
     QComboBox* statusCombo_; // 订单状态下拉框
     QComboBox* warehouseCombo_; // 仓库下拉框(显示所有仓库,包括停用仓库)
     QPushButton* searchBtn; // 搜索按钮
-    QPushButton* clearSearchBtn; // 清除搜索按钮
+    QPushButton* clearSearchBtn; // 清除所有条件按钮
+    QPushButton* keywordClearBtn; // 清除搜索关键词按钮(内嵌✕)
 
     quint64 listRequestSeq_ { 0 }; // 列表请求序列号
     quint64 detailRequestSeq_ { 0 }; // 详情请求序列号
@@ -71,6 +73,7 @@ private:
     OutboundOrderFilter currentFilter_; // 订单筛选器
     PageRequest currentRequest_; // 当前页面请求
     QTableView* tableView_; // 订单表格视图
+    QLabel* emptyLabel_; // 空状态标签
     QItemSelectionModel* selectionModel_;
 
     std::optional<OutboundOrderListItemDto> selectedOutboundDto() const; // 当前选中的订单

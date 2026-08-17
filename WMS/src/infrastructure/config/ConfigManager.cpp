@@ -19,3 +19,8 @@ DatabaseConfig ConfigManager::loadDatabaseConfig()
 {
     return databaseConfigLoader_.load(configPath_, errorMessage_);
 }
+// 加载登录配置
+LoginConfig ConfigManager::loadLoginConfig()
+{
+    return loginConfigLoader_.load(configPath_, errorMessage_);
+}

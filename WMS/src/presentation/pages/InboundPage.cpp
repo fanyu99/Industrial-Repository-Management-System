@@ -1,4 +1,5 @@
 #include "InboundPage.h"
+#include "qnamespace.h"
 #include <QAbstractItemView>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -34,7 +35,7 @@ InboundPage::InboundPage(InboundService* inboundService, ProductService* product
     statusCombo_->setObjectName(QStringLiteral("InboundPage_statusCombo"));
     statusCombo_->setPlaceholderText(QStringLiteral("请选择状态"));
     statusCombo_->addItem(QStringLiteral("所有状态"), QVariant());
-    statusCombo_->addItem(QStringLiteral("草稿"), static_cast<int>(InboundOrderStatus::Draft));
+    statusCombo_->addItem(QStringLiteral("待处理"), static_cast<int>(InboundOrderStatus::Draft));
     statusCombo_->addItem(QStringLiteral("已确认"), static_cast<int>(InboundOrderStatus::Confirmed));
     statusCombo_->addItem(QStringLiteral("已取消"), static_cast<int>(InboundOrderStatus::Cancelled));
     statusCombo_->setCurrentIndex(0);
@@ -49,24 +50,50 @@ InboundPage::InboundPage(InboundService* inboundService, ProductService* product
     searchBtn->setObjectName(QStringLiteral("InboundPage_searchBtn"));
     clearSearchBtn = new QPushButton(QStringLiteral("清除条件"), this);
     clearSearchBtn->setObjectName(QStringLiteral("InboundPage_clearSearchBtn"));
+    keywordClearBtn = new QPushButton(QStringLiteral("\u2715"), this);
+    keywordClearBtn->setObjectName(QStringLiteral("InboundPage_keywordClearBtn"));
+    keywordClearBtn->setFixedSize(24, 24);
+    keywordClearBtn->setToolTip(QStringLiteral("清除关键词"));
+    keywordClearBtn->setVisible(false);
+    keywordClearBtn->setCursor(Qt::PointingHandCursor);
     // 搜索栏布局
     QHBoxLayout* searchLayout = new QHBoxLayout();
-    searchLayout->addWidget(keywordEdit_);
+    QWidget* keywordContainer = new QWidget(this);
+    keywordContainer->setObjectName(QStringLiteral("InboundPage_keywordContainer"));
+    QHBoxLayout* keywordLayout = new QHBoxLayout(keywordContainer);
+    keywordLayout->setContentsMargins(0, 0, 0, 0);
+    keywordLayout->setSpacing(2);
+    keywordLayout->addWidget(keywordEdit_);
+    keywordLayout->addWidget(keywordClearBtn);
+    searchLayout->addWidget(keywordContainer);
     searchLayout->addWidget(statusCombo_);
     searchLayout->addWidget(warehouseCombo_);
     searchLayout->addWidget(searchBtn);
     searchLayout->addWidget(clearSearchBtn);
-    searchLayout->addStretch(1);
     searchLayout->setObjectName(QStringLiteral("InboundPage_searchLayout"));
+    searchLayout->setStretch(0, 4);
+    searchLayout->setStretch(1, 2);
+    searchLayout->setStretch(2, 2);
+    searchLayout->setStretch(3, 1);
+    searchLayout->setStretch(4, 1);
     // 搜索栏
     QWidget* searchWidget = new QWidget(this);
     searchWidget->setLayout(searchLayout);
     searchWidget->setObjectName(QStringLiteral("InboundPage_searchWidget"));
     // 搜索栏信号槽连接
     connect(searchBtn, &QPushButton::clicked, this, &InboundPage::onSearchClicked);
+    connect(keywordEdit_, &QLineEdit::returnPressed, this, &InboundPage::onSearchClicked);
     connect(clearSearchBtn, &QPushButton::clicked, this, &InboundPage::onClearSearchClicked);
+    connect(keywordClearBtn, &QPushButton::clicked, this, &InboundPage::onClearKeywordClicked);
+    connect(keywordEdit_, &QLineEdit::textChanged, this, [this](const QString& text) {
+        keywordClearBtn->setVisible(!text.trimmed().isEmpty());
+    });
 
     // 表格视图
+    emptyLabel_ = new QLabel(QStringLiteral("暂无订单"), this);
+    emptyLabel_->setAlignment(Qt::AlignCenter);
+    emptyLabel_->hide(); // 隐藏,仅页面空状态显示
+    emptyLabel_->setObjectName(QStringLiteral("InboundPage_emptyLabel"));
     tableView_ = new QTableView(this);
     tableView_->setObjectName(QStringLiteral("InboundPage_tableView"));
     tableView_->setModel(tableModel_);
@@ -175,9 +202,12 @@ void InboundPage::showInformationMessage(const QString& message)
 // 设置当前页的状态并显示消息
 void InboundPage::setPageState(InboundPageState state)
 {
+
     currentPageState_ = state;
     if (pageNavigator_)
         pageNavigator_->setLoading(currentPageState_ == InboundPageState::Loading);
+    if (emptyLabel_)
+        emptyLabel_->setVisible(currentPageState_ == InboundPageState::Empty);
     updateActions(); // 更新按钮状态
 }
 // 重新加载当前页面(最新请求为准)
@@ -449,7 +479,8 @@ void InboundPage::onDetailClicked()
         showOperationError(AppError::permissionDenied());
         return;
     }
-    if(currentPageState_!=InboundPageState::Ready)return;
+    if (currentPageState_ != InboundPageState::Ready)
+        return;
     // service进行查询获取订单详情
     const quint64 requestSeq = ++detailRequestSeq_;
     inboundService_->getOrderDetail(orderDto.value().id, this, [this, requestSeq](const InboundOrderDetailResult& result) {
@@ -486,12 +517,25 @@ void InboundPage::updateActions()
     bool canConfirm = hasSelection && inboundService_ && inboundService_->hasPermission(Permission::ConfirmInboundOrders) && selectedDto.value().status == InboundOrderStatus::Draft;
     bool canViewDetail = hasSelection && inboundService_ && inboundService_->hasPermission(Permission::ViewInboundOrders) && currentPageState_ == InboundPageState::Ready;
     // 设置按钮状态
-    createBtn->setEnabled(!loading && canCreate);
-    confirmBtn->setEnabled(!loading && canConfirm && hasSelection && currentPageState_ == InboundPageState::Ready);
-    reloadBtn->setEnabled(!loading);
-    searchBtn->setEnabled(!loading);
-    clearSearchBtn->setEnabled(!loading);
-    detailBtn->setEnabled(!loading && canViewDetail);
+    tableView_->setEnabled(!loading && !isError);
+    if (createBtn)
+        createBtn->setEnabled(!loading && canCreate);
+    if (confirmBtn)
+        confirmBtn->setEnabled(!loading && canConfirm && hasSelection && currentPageState_ == InboundPageState::Ready);
+    if (reloadBtn)
+        reloadBtn->setEnabled(!loading);
+    if (searchBtn)
+        searchBtn->setEnabled(!loading);
+    if (clearSearchBtn)
+        clearSearchBtn->setEnabled(!loading);
+    if (detailBtn)
+        detailBtn->setEnabled(!loading && canViewDetail);
+    if (keywordEdit_)
+        keywordEdit_->setEnabled(!loading);
+    if (statusCombo_)
+        statusCombo_->setEnabled(!loading);
+    if (warehouseCombo_)
+        warehouseCombo_->setEnabled(!loading);
 }
 // 从控件读取筛选器
 InboundOrderFilter InboundPage::readFilterFromControls() const
@@ -536,6 +580,12 @@ void InboundPage::onClearSearchClicked()
     currentFilter_ = {};
     currentRequest_.page = 1;
     reloadCurrentPage();
+}
+
+void InboundPage::onClearKeywordClicked()
+{
+    keywordEdit_->clear();
+    keywordEdit_->setFocus();
 }
 // 加载仓库搜索选项
 void InboundPage::loadWarehouseSearchOptions()

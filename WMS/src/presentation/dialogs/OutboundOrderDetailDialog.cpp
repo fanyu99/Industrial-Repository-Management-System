@@ -1,12 +1,12 @@
 #include "OutboundOrderDetailDialog.h"
 #include <QAbstractItemView>
 #include <QDateTime>
+#include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextEdit>
-#include <QDialogButtonBox>
 #include <QVBoxLayout>
 OutboundOrderDetailDialog::OutboundOrderDetailDialog(QWidget* parent)
     : QDialog(parent)
@@ -71,7 +71,7 @@ QString OutboundOrderDetailDialog::mapStatusToString(OutboundOrderStatus status)
 {
     switch (status) {
     case OutboundOrderStatus::Draft:
-        return QStringLiteral("待确认");
+        return QStringLiteral("待处理");
     case OutboundOrderStatus::Confirmed:
         return QStringLiteral("已确认");
     case OutboundOrderStatus::Cancelled:

@@ -46,11 +46,12 @@ ProductEditDialog::ProductEditDialog(ProductEditMode mode, QWidget* parent)
 
     // 7. 产品状态
     activeCheckBox_ = new QCheckBox(QStringLiteral("启用产品"));
+    activeCheckBox_->setChecked(true); // 默认启用
     formLayout->addRow(QStringLiteral("产品状态:"), activeCheckBox_);
 
     // 8. 分类/单位仅激活复选框
     masterdataActiveOnlyCheckBox_ = new QCheckBox(QStringLiteral("仅激活的单位/分类"));
-    masterdataActiveOnlyCheckBox_->setChecked(true);
+    masterdataActiveOnlyCheckBox_->setChecked(true); // 默认仅激活的单位/分类
     formLayout->addRow(QStringLiteral("分类/单位仅激活:"), masterdataActiveOnlyCheckBox_);
 
     mainLayout->addLayout(formLayout);

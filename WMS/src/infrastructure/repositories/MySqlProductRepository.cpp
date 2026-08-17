@@ -115,7 +115,7 @@ void MySqlProductRepository::listProducts(
     QStringList whereConditions; // 查询条件where
     QVariantMap parametersMap; // 参数映射
     if (!filter.keyword.trimmed().isEmpty()) { // 关键字条件
-        whereConditions << QStringLiteral("(p.code LIKE :keyword OR p.name LIKE :keyword)");
+        whereConditions << QStringLiteral("(p.code LIKE :keyword OR p.name LIKE :keyword OR p.specification LIKE :keyword)");
         parametersMap.insert("keyword", "%" + filter.keyword.trimmed() + "%");
     }
     if (filter.categoryId.has_value()) { // 分类条件

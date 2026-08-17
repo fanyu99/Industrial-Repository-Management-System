@@ -6,6 +6,9 @@ qt_add_library(WmsConfigManager STATIC
     IniHelper.h
     DatabaseConfigLoader.cpp
     DatabaseConfigLoader.h
+    LoginConfig.h
+    LoginConfigLoader.h
+    LoginConfigLoader.cpp
 )
 target_link_libraries(WmsConfigManager PUBLIC Qt6::Core WmsDatabase)
 target_include_directories(WmsConfigManager

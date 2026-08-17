@@ -34,6 +34,7 @@ qt_add_library(WmsDialogs INTERFACE)
 target_link_libraries(WmsProductEditDialog PUBLIC
     Qt6::Widgets WmsDto WmsDomain
 )
+
 target_link_libraries(WmsInboundEditDialog PUBLIC
     Qt6::Widgets WmsDto
     WmsDomain

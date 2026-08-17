@@ -15,6 +15,7 @@ PageNavigator::PageNavigator(QWidget* parent)
     this->pageSpinBox_ = new QSpinBox(this);
     this->pageSpinBox_->setMinimum(1);
     this->pageInfoLabel_ = new QLabel(QStringLiteral("第1页/共1页"), this);
+    this->pageInfoLabel_->setAlignment(Qt::AlignCenter);
     QHBoxLayout* layout = new QHBoxLayout(this);
     layout->addWidget(firstButton_);
     layout->addWidget(prevButton_);
@@ -28,6 +29,7 @@ PageNavigator::PageNavigator(QWidget* parent)
     connect(prevButton_, &QPushButton::clicked, this, [this]() { emit pageChanged(pageSpinBox_->value() - 1); });
     connect(nextButton_, &QPushButton::clicked, this, [this]() { emit pageChanged(pageSpinBox_->value() + 1); });
     connect(goButton_, &QPushButton::clicked, this, [this]() { emit pageChanged(pageSpinBox_->value()); });
+    connect(pageSpinBox_, &QSpinBox::returnPressed, this, [this]() { emit pageChanged(pageSpinBox_->value()); });
     connect(firstButton_, &QPushButton::clicked, this, [this]() { emit pageChanged(1); });
     connect(lastButton_, &QPushButton::clicked, this, [this]() { emit pageChanged(pageSpinBox_->maximum()); });
 }

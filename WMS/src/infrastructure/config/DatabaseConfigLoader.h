@@ -2,7 +2,6 @@
 #pragma once
 #include <QString>
 #include "DatabaseTypes.h"
-#include "IniHelper.h"
 // 数据库配置加载器
 class DatabaseConfigLoader {
 public:

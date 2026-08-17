@@ -11,6 +11,7 @@
 #include <functional>
 #include <optional>
 struct FindCredentialResult {
+    bool success { false };
     std::optional<AuthCredentialRecord> credential;
     std::optional<AppError> error;
 };
@@ -18,11 +19,16 @@ struct FindCredentialResult {
 class IAuthRepository {
 public:
     // 通过用户名查询认证凭证记录
-    using FindCreadentialCallback = std::function<void(const FindCredentialResult&)>;
+    using FindCredentialCallback = std::function<void(const FindCredentialResult&)>;
     virtual ~IAuthRepository() = default;
-    virtual void findCredentialByUserName(
-        const QString& userName,
+    // 根据用户名查询认证凭证并反馈
+    virtual void findCredentialByUserName(const QString& userName,
         QObject* owner,
-        FindCreadentialCallback callback = nullptr)
-        = 0; // 根据用户名查询认证凭证并反馈
+        FindCredentialCallback callback)
+        = 0;
+    // 根据用户ID查询认证凭证
+    virtual void findCredentialByUserId(quint32 userId,
+        QObject* owner,
+        FindCredentialCallback callback)
+        = 0;
 };

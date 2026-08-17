@@ -88,7 +88,8 @@ void AuthService::login(const QString& userName, const QString& password, QObjec
     repository_.findCredentialByUserName(
         userName,
         owner,
-        [this, ownerPtr, password, callback = std::move(callback)](const FindCredentialResult& repoResult) mutable {
+        [this, ownerPtr, password, callback = std::move(callback)](
+            const FindCredentialResult& repoResult) {
             // 确保ownerPtr未被销毁
             if (ownerPtr.isNull())
                 return;

@@ -1,5 +1,5 @@
 #include "DatabaseConfigLoader.h"
-
+#include "IniHelper.h"
 // 数据库配置加载器
 DatabaseConfigLoader::DatabaseConfigLoader()
 {

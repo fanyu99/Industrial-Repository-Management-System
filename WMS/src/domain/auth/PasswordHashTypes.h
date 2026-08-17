@@ -21,7 +21,8 @@ struct PasswordHashRecord {
     int iterations { -1 }; // 迭代次数(-1表示无效)
     QByteArray salt; // 随机盐
     QByteArray hash; // 密码hash值
-    [[nodiscard]] bool isValid() const; // 校验记录是否有效
+    [[nodiscard]] bool isValid() const
+    ;
 };
 
 // 密码hash结果error

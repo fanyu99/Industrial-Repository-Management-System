@@ -1,12 +1,12 @@
 #include "InboundOrderDetailDialog.h"
 #include <QAbstractItemView>
 #include <QDateTime>
+#include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextEdit>
-#include <QDialogButtonBox>
 #include <QVBoxLayout>
 InboundOrderDetailDialog::InboundOrderDetailDialog(QWidget* parent)
     : QDialog(parent)
@@ -75,7 +75,7 @@ QString InboundOrderDetailDialog::mapStatusToString(InboundOrderStatus status)
 {
     switch (status) {
     case InboundOrderStatus::Draft:
-        return QStringLiteral("待确认");
+        return QStringLiteral("待处理");
     case InboundOrderStatus::Confirmed:
         return QStringLiteral("已确认");
     case InboundOrderStatus::Cancelled:
@@ -89,7 +89,6 @@ InboundOrderDetailDialog::InboundOrderDetailDialog(
     QWidget* parent)
     : InboundOrderDetailDialog(parent)
 {
-    
 
     setOrderDetail(orderDetail_);
 }
